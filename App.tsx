@@ -19,9 +19,10 @@ import Privacy from './views/Privacy';
 import AIChatBot from './components/AIChatBot';
 import { UserProvider, useUser } from './UserContext';
 import { LanguageProvider, useLanguage } from './LanguageContext';
-import { Loader2, AlertCircle, Eye, EyeOff, ArrowRight, Zap, TrendingUp, FileText, UserCircle, ShieldCheck, Lock, Mail, KeyRound, CheckCircle2, RefreshCcw, Gift, Star, Sparkles, UserPlus, Rocket, Info, Cpu, Wifi, WifiOff, HelpCircle, Database, ChevronLeft, Copy, Terminal } from 'lucide-react';
+import { Loader2, AlertCircle, Eye, EyeOff, ArrowRight, Zap, TrendingUp, FileText, UserCircle, ShieldCheck, Lock, Mail, KeyRound, CheckCircle2, RefreshCcw, Gift, Star, Sparkles, UserPlus, Rocket, Info, Cpu, Wifi, WifiOff, HelpCircle, Database, ChevronLeft, Copy, Terminal, PartyPopper } from 'lucide-react';
 
 const LOGO_URL = "https://c.top4top.io/p_3676pdlj43.jpg";
+const GIFT_IMAGE = "https://j.top4top.io/p_3669iibh30.jpg";
 
 const SplashScreen = () => (
   <div className="fixed inset-0 z-[500] bg-slate-950 flex flex-col items-center justify-center p-8 font-cairo">
@@ -233,11 +234,21 @@ GRANT ALL ON TABLE global_chat TO anon, authenticated, service_role;`;
 };
 
 const AppRoutes = () => {
+  const navigate = useNavigate();
   const { isAuthenticated, user, isProfileLoaded, completeOnboarding } = useUser();
+  const [showGiftSuccess, setShowGiftSuccess] = useState(false);
+
+  const handleFinishOnboarding = async () => {
+    await completeOnboarding();
+    setShowGiftSuccess(true);
+  };
+
   if (!isProfileLoaded) return <SplashScreen />;
+
   return (
     <>
-      {isAuthenticated && user.hasSeenOnboarding === false && (
+      {/* 1. Onboarding Rules Modal */}
+      {isAuthenticated && user.hasSeenOnboarding === false && !showGiftSuccess && (
         <div className="fixed inset-0 z-[200] bg-slate-950/98 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-500">
           <div className="glass p-10 rounded-[3rem] text-center max-w-sm border border-blue-500/20 shadow-2xl animate-in zoom-in-95 duration-500">
             <div className="w-20 h-20 bg-blue-600/10 text-blue-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
@@ -250,7 +261,7 @@ const AppRoutes = () => {
               يرجى التأكد من الحفاظ على كود المزامنة الخاص بك. هل أنت جاهز للبدء؟
             </p>
             <button 
-              onClick={() => completeOnboarding()} 
+              onClick={handleFinishOnboarding} 
               className="w-full py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-lg shadow-xl shadow-blue-600/20 active:scale-95 transition-all"
             >
               جاهز، دعنا نبدأ!
@@ -258,6 +269,48 @@ const AppRoutes = () => {
           </div>
         </div>
       )}
+
+      {/* 2. Gift Success Modal - THE NEW MODAL YOU ASKED FOR */}
+      {showGiftSuccess && (
+        <div className="fixed inset-0 z-[300] bg-slate-950/95 backdrop-blur-3xl flex items-center justify-center p-6 animate-in fade-in duration-700">
+          <div className="relative glass p-1 rounded-[3.5rem] border-2 border-emerald-500/30 shadow-[0_0_50px_rgba(16,185,129,0.2)] max-w-sm w-full animate-in zoom-in-90 duration-500">
+            <div className="bg-slate-950 rounded-[3.4rem] p-10 text-center overflow-hidden relative">
+              {/* Decorative Sparkles */}
+              <Sparkles className="absolute top-6 right-6 text-amber-400 animate-pulse" size={24} />
+              <PartyPopper className="absolute bottom-6 left-6 text-blue-400 animate-bounce" size={24} />
+              
+              <div className="relative z-10">
+                <div className="w-24 h-24 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-emerald-500/20">
+                  <Gift size={48} />
+                </div>
+                
+                <h2 className="text-3xl font-black text-white mb-2">هدية الترحيب!</h2>
+                <p className="text-emerald-400 text-sm font-black uppercase tracking-widest mb-8">تم تفعيل جهازك المجاني</p>
+                
+                {/* Device Card in Modal */}
+                <div className="bg-slate-900 rounded-3xl p-4 border border-white/5 mb-8 group">
+                   <div className="aspect-video rounded-2xl overflow-hidden mb-4 border border-white/10">
+                      <img src={GIFT_IMAGE} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt="Turbo S9" />
+                   </div>
+                   <h4 className="text-white font-black">Turbo S9 - Welcome Gift</h4>
+                   <div className="flex items-center justify-center gap-2 mt-2">
+                      <TrendingUp size={14} className="text-emerald-400" />
+                      <span className="text-[10px] font-black text-slate-400">يربح 5$ خلال 24 ساعة</span>
+                   </div>
+                </div>
+
+                <button 
+                  onClick={() => { setShowGiftSuccess(false); navigate('/my-devices'); }} 
+                  className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-3"
+                >
+                  بدء التعدين الآن <Rocket size={20} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isAuthenticated && <AIChatBot />}
       <Routes>
         <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
