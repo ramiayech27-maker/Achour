@@ -252,12 +252,12 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           isRead: false 
         };
 
-        // تحديث كل شيء في كائن واحد لضمان الحفظ المرة الواحدة
+        // تصحيح الخطأ: تم استبدال notifications بـ activePackages
         const updatedUser = { 
           ...userRef.current, 
           hasSeenOnboarding: true,
           hasClaimedWelcomeGift: true,
-          activePackages: userRef.current.hasClaimedWelcomeGift ? userRef.current.activePackages : [gift, ...userRef.current.activePackages],
+          activePackages: [gift, ...userRef.current.activePackages],
           notifications: [welcomeNotif, ...userRef.current.notifications]
         };
 

@@ -64,9 +64,9 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
   return (
     <div 
       onClick={() => pkg.status === DeviceStatus.IDLE && setShowActivateModal(true)}
-      className={`group cursor-pointer flex flex-col bg-[#1e1e1e] rounded-[1.5rem] overflow-hidden transition-all active:scale-95 border border-white/[0.03] hover:border-blue-500/30 shadow-lg ${pkg.status === DeviceStatus.RUNNING ? 'ring-1 ring-blue-500/30' : ''}`}
+      className={`group cursor-pointer flex flex-col bg-[#111827] rounded-[1.2rem] overflow-hidden transition-all active:scale-95 border border-white/[0.03] hover:border-blue-500/30 shadow-lg ${pkg.status === DeviceStatus.RUNNING ? 'ring-1 ring-blue-500/30' : ''}`}
     >
-      <div className="relative w-full aspect-[4/3] bg-black flex items-center justify-center overflow-hidden">
+      <div className="relative w-full aspect-[3/2] bg-black flex items-center justify-center overflow-hidden">
         <img 
           src={pkg.icon} 
           alt={pkg.name} 
@@ -75,38 +75,38 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
         
         {pkg.status === DeviceStatus.RUNNING && (
           <div className="absolute inset-0 bg-blue-600/10 flex flex-col items-center justify-center">
-            <div className="w-10 h-10 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+            <div className="w-8 h-8 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
           </div>
         )}
 
-        <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-lg border border-white/5">
-           <p className="text-[8px] text-slate-400 font-black uppercase">{isGift ? (isRtl ? 'تجريبي' : 'Trial') : (isRtl ? 'مملوك' : 'Owned')}</p>
+        <div className="absolute top-1.5 left-1.5 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-md border border-white/5">
+           <p className="text-[7px] text-slate-300 font-black uppercase">{isGift ? (isRtl ? 'هدية' : 'Gift') : (isRtl ? 'دائم' : 'Life')}</p>
         </div>
       </div>
 
-      <div className="p-4 space-y-3">
+      <div className="p-3 space-y-2">
         <div className="text-center">
-          <h3 className="text-white font-black text-sm truncate">{pkg.name.split('-')[0]}</h3>
-          <p className="text-[#8b5cf6] font-black text-[8px] uppercase tracking-wider mt-0.5">
-            {pkg.status === DeviceStatus.RUNNING ? (isRtl ? 'جاري التعدين' : 'Mining...') : (isRtl ? 'جاهز' : 'Ready')}
+          <h3 className="text-white font-black text-[11px] truncate">{pkg.name.split(' - ')[0]}</h3>
+          <p className={`font-black text-[7px] uppercase tracking-wider mt-0.5 ${pkg.status === DeviceStatus.RUNNING ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`}>
+            {pkg.status === DeviceStatus.RUNNING ? (isRtl ? 'نشط' : 'Active') : (isRtl ? 'جاهز' : 'Ready')}
           </p>
         </div>
 
         {pkg.status === DeviceStatus.RUNNING && (
-          <div className="space-y-3">
-            <div className="bg-black/30 p-3 rounded-xl border border-white/5">
+          <div className="space-y-2">
+            <div className="bg-black/40 p-2 rounded-lg border border-white/5">
                <div className="flex flex-col items-center mb-1">
-                  <span className="text-[8px] text-slate-500 font-black uppercase mb-0.5">{isRtl ? 'الإنتاج' : 'Prod'}</span>
-                  <span className="text-emerald-400 font-black text-xs tabular-nums tracking-tighter">
-                    +${currentEarnings.toFixed(4)}
+                  <span className="text-[7px] text-slate-500 font-black uppercase">{isRtl ? 'الربح' : 'Profit'}</span>
+                  <span className="text-emerald-400 font-black text-[10px] tabular-nums tracking-tighter">
+                    +${currentEarnings.toFixed(3)}
                   </span>
                </div>
                <div className="w-full h-1 bg-black rounded-full overflow-hidden">
                   <div className="h-full bg-blue-500 shadow-[0_0_8px_#3b82f6] transition-all duration-1000" style={{ width: `${progress}%` }}></div>
                </div>
-               <div className="flex justify-center mt-1.5 text-[7px] font-bold text-slate-500 gap-2">
+               <div className="flex justify-center mt-1 text-[6px] font-bold text-slate-500 gap-1.5">
                   <span>{timeLeft}</span>
-                  <span className="opacity-50">|</span>
+                  <span className="opacity-30">|</span>
                   <span>{pkg.currentDailyRate}%</span>
                </div>
             </div>
@@ -114,8 +114,8 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
         )}
 
         {pkg.status === DeviceStatus.IDLE && (
-          <div className="pt-1">
-             <div className="w-full py-2 bg-blue-600/10 text-blue-500 border border-blue-500/20 rounded-lg text-center font-black text-[9px] group-hover:bg-blue-600 group-hover:text-white transition-all uppercase tracking-widest">
+          <div className="pt-0.5">
+             <div className="w-full py-1.5 bg-blue-600 text-white rounded-lg text-center font-black text-[9px] hover:bg-blue-500 transition-all uppercase">
                {isRtl ? 'تشغيل' : 'Start'}
              </div>
           </div>
@@ -194,14 +194,14 @@ const MyDevices = () => {
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{isRtl ? 'إدارة معدات التعدين' : 'Mining Equipment Management'}</p>
           </div>
         </div>
-        <div className="bg-blue-600/10 border border-blue-500/20 px-4 py-2 rounded-xl flex items-center gap-2">
-           <Cpu size={16} className="text-blue-500" />
-           <span className="text-xs font-black text-white">{user.activePackages.length} {isRtl ? 'جهاز' : 'Devices'}</span>
+        <div className="bg-blue-600/10 border border-blue-500/20 px-3 py-1.5 rounded-xl flex items-center gap-2">
+           <Cpu size={14} className="text-blue-500" />
+           <span className="text-[10px] font-black text-white">{user.activePackages.length} {isRtl ? 'جهاز' : 'Devices'}</span>
         </div>
       </header>
 
       {user.activePackages.length > 0 ? (
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 max-w-5xl mx-auto">
           {user.activePackages.map((pkg) => <DeviceCard key={pkg.instanceId} pkg={pkg} />)}
         </div>
       ) : (
