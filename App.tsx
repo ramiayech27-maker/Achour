@@ -24,7 +24,7 @@ import { INITIAL_USER } from './constants';
 
 const LOGO_URL = "https://c.top4top.io/p_3676pdlj43.jpg";
 const GIFT_IMAGE = "https://j.top4top.io/p_3669iibh30.jpg";
-const ONBOARDING_LOCK = 'minecloud_onboarding_lock';
+const ONBOARDING_LOCK = 'minecloud_onboarding_lock_v3';
 
 const SplashScreen = () => (
   <div className="fixed inset-0 z-[500] bg-slate-950 flex flex-col items-center justify-center p-8 font-cairo text-right">
@@ -50,18 +50,17 @@ const AppRoutes = () => {
 
   const handleFinishOnboarding = async () => {
     setIsProcessing(true);
-    await completeOnboarding();
+    const success = await completeOnboarding();
     setIsProcessing(false);
-    setShowGiftSuccess(true);
+    if (success) {
+      setShowGiftSuccess(true);
+    } else {
+      alert("عذراً، حدث خطأ في الاتصال بالسحابة. يرجى المحاولة مرة أخرى.");
+    }
   };
 
   if (!isProfileLoaded) return <SplashScreen />;
 
-  // القفل الذهبي المحدث:
-  // 1. يجب أن يكون مسجلاً ومحملاً بالكامل
-  // 2. يجب ألا تكون هناك عملية مزامنة جارية (ننتظر Supabase)
-  // 3. يجب ألا يكون المستخدم هو المستخدم الافتراضي
-  // 4. السحابة تقول false والذاكرة المحلية فارغة تماماً لهذا المستخدم
   const hasLocalLock = localStorage.getItem(`${ONBOARDING_LOCK}_${user.id}`) === 'true';
   const canShowOnboarding = isAuthenticated && 
                           !isSyncing && 
@@ -101,14 +100,14 @@ const AppRoutes = () => {
             <div className="w-24 h-24 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-500/20">
               <Gift size={48} />
             </div>
-            <h2 className="text-3xl font-black text-white mb-2">هدية الترحيب!</h2>
-            <p className="text-emerald-400 text-sm font-black uppercase tracking-widest mb-8">تم تفعيل جهازك المجاني</p>
+            <h2 className="text-3xl font-black text-white mb-2 text-center">هدية الترحيب!</h2>
+            <p className="text-emerald-400 text-sm font-black uppercase tracking-widest mb-8 text-center">تم تفعيل جهازك المجاني بنجاح</p>
             <div className="bg-slate-900 rounded-3xl p-4 border border-white/5 mb-8">
                <div className="aspect-video rounded-2xl overflow-hidden mb-4 border border-white/10">
                   <img src={GIFT_IMAGE} className="w-full h-full object-cover" alt="Turbo S9" />
                </div>
-               <h4 className="text-white font-black text-sm">Turbo S9 - Welcome Gift</h4>
-               <p className="text-[10px] text-slate-500 font-bold mt-1">يربح 5$ خلال 24 ساعة</p>
+               <h4 className="text-white font-black text-sm text-center">Turbo S9 - Welcome Gift</h4>
+               <p className="text-[10px] text-slate-500 font-bold mt-1 text-center">يربح 5$ خلال 24 ساعة</p>
             </div>
             <button 
               onClick={() => { setShowGiftSuccess(false); navigate('/my-devices'); }} 
@@ -149,6 +148,7 @@ const AuthView = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { login, register, isCloudConnected } = useUser();
 
@@ -156,6 +156,12 @@ const AuthView = () => {
     e.preventDefault(); 
     setError(null); 
     if (!isCloudConnected) { setError("السحابة غير متصلة!"); return; }
+    
+    if (authMode === 'register' && password !== confirmPassword) {
+      setError("كلمات المرور غير متطابقة.");
+      return;
+    }
+
     setIsLoading(true);
     try {
       const result = authMode === 'register' ? await register(email, password) : await login(email, password);
@@ -178,11 +184,16 @@ const AuthView = () => {
         <form className="space-y-4" onSubmit={handleSubmit}>
           <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
           <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="كلمة المرور" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
+          
+          {authMode === 'register' && (
+             <input required type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="تأكيد كلمة المرور" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right animate-in slide-in-from-top-2" />
+          )}
+
           <button disabled={isLoading} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-600/20 transition-all active:scale-95 flex items-center justify-center">
             {isLoading ? <Loader2 className="animate-spin" /> : (authMode === 'login' ? 'دخول آمن' : 'إنشاء الحساب الآن')}
           </button>
         </form>
-        <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="w-full text-slate-400 text-sm font-bold hover:text-blue-400 transition-colors">
+        <button onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setError(null); }} className="w-full text-slate-400 text-sm font-bold hover:text-blue-400 transition-colors">
           {authMode === 'login' ? 'ليس لديك حساب؟ افتح حساباً مجانياً' : 'لديك حساب بالفعل؟ سجل دخولك'}
         </button>
       </div>
