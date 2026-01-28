@@ -24,7 +24,7 @@ import { INITIAL_USER } from './constants';
 
 const LOGO_URL = "https://c.top4top.io/p_3676pdlj43.jpg";
 const GIFT_IMAGE = "https://j.top4top.io/p_3669iibh30.jpg";
-const ONBOARDING_LOCK = 'minecloud_onboarding_lock_v3';
+const ONBOARDING_LOCK_PREFIX = 'minecloud_gift_lock_v7_';
 
 const SplashScreen = () => (
   <div className="fixed inset-0 z-[500] bg-slate-950 flex flex-col items-center justify-center p-8 font-cairo text-right">
@@ -48,30 +48,39 @@ const AppRoutes = () => {
   const [showGiftSuccess, setShowGiftSuccess] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // فحص ما إذا كان المستخدم يمتلك الهدية فعلياً في قائمة أجهزته (أقوى فحص)
+  const userHasGiftInList = user.activePackages.some(p => p.instanceId.startsWith('GIFT-'));
+  // قفل محلي إضافي
+  const hasLocalLock = localStorage.getItem(`${ONBOARDING_LOCK_PREFIX}${user.id}`) === 'true';
+
   const handleFinishOnboarding = async () => {
+    if (isProcessing) return;
     setIsProcessing(true);
+    
+    // وضع القفل المحلي فوراً قبل حتى الطلب السحابي
+    localStorage.setItem(`${ONBOARDING_LOCK_PREFIX}${user.id}`, 'true');
+    
     const success = await completeOnboarding();
     setIsProcessing(false);
     if (success) {
       setShowGiftSuccess(true);
-    } else {
-      alert("عذراً، حدث خطأ في الاتصال بالسحابة. يرجى المحاولة مرة أخرى.");
     }
   };
 
   if (!isProfileLoaded) return <SplashScreen />;
 
-  const hasLocalLock = localStorage.getItem(`${ONBOARDING_LOCK}_${user.id}`) === 'true';
-  const canShowOnboarding = isAuthenticated && 
-                          !isSyncing && 
-                          user.email !== INITIAL_USER.email && 
-                          user.hasSeenOnboarding === false && 
-                          !hasLocalLock &&
-                          !showGiftSuccess;
+  // الشروط النهائية لإظهار نافذة "قواعد التعدين"
+  const shouldShowOnboarding = isAuthenticated && 
+                                !isSyncing && 
+                                user.email !== INITIAL_USER.email && 
+                                user.hasSeenOnboarding === false && 
+                                !userHasGiftInList && 
+                                !hasLocalLock &&
+                                !showGiftSuccess;
 
   return (
     <>
-      {canShowOnboarding && (
+      {shouldShowOnboarding && (
         <div className="fixed inset-0 z-[200] bg-slate-950/98 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-500">
           <div className="glass p-10 rounded-[3rem] text-center max-w-sm border border-blue-500/20 shadow-2xl animate-in zoom-in-95 duration-500">
             <div className="w-20 h-20 bg-blue-600/10 text-blue-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
@@ -79,15 +88,15 @@ const AppRoutes = () => {
             </div>
             <h3 className="text-2xl font-black text-white mb-4">قواعد التعدين</h3>
             <p className="text-slate-400 text-sm mb-8 font-bold leading-relaxed text-center">
-              أهلاً بك في MineCloud! أنت هنا تمتلك قوة معالجة حقيقية. 
-              تتم إضافة الأرباح لحظياً إلى رصيدك. هل أنت جاهز للبدء؟
+              أهلاً بك في MineCloud! لقد خصصنا لك وحدة معالجة مجانية لتبدأ رحلتك. 
+              تأكد من تفعيل أجهزتك يومياً لضمان استمرار الأرباح.
             </p>
             <button 
               disabled={isProcessing}
               onClick={handleFinishOnboarding} 
               className="w-full py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-lg shadow-xl shadow-blue-600/20 active:scale-95 transition-all flex items-center justify-center"
             >
-              {isProcessing ? <Loader2 className="animate-spin" /> : 'جاهز، دعنا نبدأ!'}
+              {isProcessing ? <Loader2 className="animate-spin" /> : 'استلام الهدية والبدء'}
             </button>
           </div>
         </div>
@@ -100,8 +109,8 @@ const AppRoutes = () => {
             <div className="w-24 h-24 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-500/20">
               <Gift size={48} />
             </div>
-            <h2 className="text-3xl font-black text-white mb-2 text-center">هدية الترحيب!</h2>
-            <p className="text-emerald-400 text-sm font-black uppercase tracking-widest mb-8 text-center">تم تفعيل جهازك المجاني بنجاح</p>
+            <h2 className="text-3xl font-black text-white mb-2 text-center">هدية جاهزة!</h2>
+            <p className="text-emerald-400 text-sm font-black uppercase tracking-widest mb-8 text-center">تم تفعيل جهازك المجاني</p>
             <div className="bg-slate-900 rounded-3xl p-4 border border-white/5 mb-8">
                <div className="aspect-video rounded-2xl overflow-hidden mb-4 border border-white/10">
                   <img src={GIFT_IMAGE} className="w-full h-full object-cover" alt="Turbo S9" />
@@ -113,7 +122,7 @@ const AppRoutes = () => {
               onClick={() => { setShowGiftSuccess(false); navigate('/my-devices'); }} 
               className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-3"
             >
-              بدء التعدين الآن <Rocket size={20} />
+              دخول المنصة <Rocket size={20} />
             </button>
           </div>
         </div>

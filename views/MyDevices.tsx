@@ -62,8 +62,9 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
   return (
     <div 
       onClick={() => pkg.status === DeviceStatus.IDLE && setShowActivateModal(true)}
-      className={`group cursor-pointer flex flex-col bg-slate-900/60 rounded-2xl overflow-hidden transition-all active:scale-95 border border-white/5 hover:border-blue-500/30 shadow-md ${pkg.status === DeviceStatus.RUNNING ? 'ring-1 ring-blue-500/30' : ''}`}
+      className={`group cursor-pointer flex flex-col bg-slate-900/40 rounded-2xl overflow-hidden transition-all active:scale-95 border border-white/5 hover:border-blue-500/30 shadow-md ${pkg.status === DeviceStatus.RUNNING ? 'ring-1 ring-blue-500/30' : ''}`}
     >
+      {/* Image Container - Strictly Small Square */}
       <div className="relative w-full aspect-square bg-black overflow-hidden">
         <img 
           src={pkg.icon} 
@@ -84,9 +85,9 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
 
       <div className="p-2 space-y-1">
         <div className="text-center">
-          <h3 className="text-white font-bold text-[9px] truncate leading-tight px-0.5">{pkg.name.split(' - ')[0]}</h3>
-          <p className={`font-black text-[7px] uppercase tracking-tighter mt-0.5 ${pkg.status === DeviceStatus.RUNNING ? 'text-emerald-400' : 'text-slate-500'}`}>
-            {pkg.status === DeviceStatus.RUNNING ? (isRtl ? 'نشط' : 'Active') : (isRtl ? 'متوقف' : 'Idle')}
+          <h3 className="text-white font-bold text-[8px] truncate leading-tight px-0.5">{pkg.name.split(' - ')[0]}</h3>
+          <p className={`font-black text-[6px] uppercase tracking-tighter mt-0.5 ${pkg.status === DeviceStatus.RUNNING ? 'text-emerald-400' : 'text-slate-500'}`}>
+            {pkg.status === DeviceStatus.RUNNING ? (isRtl ? 'نشط' : 'Active') : (isRtl ? 'جاهز' : 'Idle')}
           </p>
         </div>
 
@@ -95,16 +96,18 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
              <span className="text-emerald-400 font-black text-[8px] tabular-nums tracking-tighter block">
                +${currentEarnings.toFixed(3)}
              </span>
-             <div className="w-full h-0.5 bg-slate-800 rounded-full overflow-hidden mt-1">
-                <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${progress}%` }}></div>
+             <div className="w-full h-0.5 bg-slate-800 rounded-full overflow-hidden mt-1 mx-auto">
+                <div className="h-full bg-blue-500 transition-all duration-1000 shadow-[0_0_5px_rgba(59,130,246,0.5)]" style={{ width: `${progress}%` }}></div>
              </div>
              <p className="text-[6px] text-slate-500 font-bold mt-0.5">{timeLeft}</p>
           </div>
         )}
 
         {pkg.status === DeviceStatus.IDLE && (
-          <div className="w-full py-1 bg-blue-600 text-white rounded-lg text-center font-black text-[8px] uppercase shadow-lg shadow-blue-600/10">
-            {isRtl ? 'تفعيل' : 'Start'}
+          <div className="pt-0.5">
+             <div className="w-full py-1 bg-blue-600 text-white rounded-lg text-center font-black text-[8px] uppercase shadow-lg shadow-blue-600/10">
+               {isRtl ? 'تفعيل' : 'Start'}
+             </div>
           </div>
         )}
       </div>
@@ -135,14 +138,14 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
                   <Zap size={18} className="text-blue-500" />
                 </button>
 
-                <button onClick={() => setShowActivateModal(false)} className="mt-4 text-[10px] text-slate-500 font-black uppercase tracking-widest hover:text-white transition-colors">
+                <button onClick={() => setShowActivateModal(false)} className="mt-4 text-[10px] text-slate-500 font-black uppercase tracking-widest hover:text-white">
                   {isRtl ? 'إلغاء' : 'Cancel'}
                 </button>
              </div>
              {activating && (
                 <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm rounded-[2.5rem] flex flex-col items-center justify-center z-20">
                    <Loader2 className="animate-spin text-blue-500 mb-2" size={32} />
-                   <p className="text-white text-[10px] font-black uppercase tracking-widest">توصيل الخوادم...</p>
+                   <p className="text-white text-[10px] font-black uppercase tracking-widest">Connecting Pool...</p>
                 </div>
              )}
           </div>
@@ -170,7 +173,7 @@ const MyDevices = () => {
           </div>
         </div>
         <div className="bg-blue-600/10 border border-blue-500/20 px-3 py-1.5 rounded-xl flex items-center gap-2">
-           <Cpu size={14} className="text-blue-500" />
+           <Zap size={14} className="text-blue-500" />
            <span className="text-[12px] font-black text-white">{user.activePackages.length}</span>
         </div>
       </header>
