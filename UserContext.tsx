@@ -78,7 +78,8 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     setUser(updatedUser);
     if (supabase && updatedUser.email && updatedUser.email !== INITIAL_USER.email) {
       try {
-        await supabase.from('profiles').upsert({ email: updatedUser.email.toLowerCase(), data: updatedUser }, { onConflict: 'email' });
+        const { error } = await supabase.from('profiles').upsert({ email: updatedUser.email.toLowerCase(), data: updatedUser }, { onConflict: 'email' });
+        if (error) console.error("Cloud Save Error:", error.message);
       } catch (e) {}
     }
   };
@@ -94,7 +95,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       user, isAuthenticated, isSyncing, isProfileLoaded, isCloudConnected: !!supabase,
       latestNotification,
       login: async (email, pass) => {
-        if (!supabase) return { success: false, error: 'السحابة غير متصلة. يرجى مراجعة الإعدادات.' };
+        if (!supabase) return { success: false, error: 'السحابة غير متصلة.' };
         setIsSyncing(true);
         try {
           const { data, error } = await supabase.from('profiles').select('data').eq('email', email.toLowerCase().trim()).maybeSingle();
@@ -114,16 +115,14 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         }
       },
       register: async (email, pass) => {
-        if (!supabase) return { success: false, error: 'السحابة غير متصلة. يرجى إضافة SUPABASE_URL.' };
-        if (!pass || pass.length < 6) return { success: false, error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.' };
-        
+        if (!supabase) return { success: false, error: 'السحابة غير متصلة.' };
         setIsSyncing(true);
         const normalizedEmail = email.toLowerCase().trim();
         try {
           const { data: existing } = await supabase.from('profiles').select('email').eq('email', normalizedEmail).maybeSingle();
           if (existing) {
             setIsSyncing(false);
-            return { success: false, error: 'هذا البريد مسجل مسبقاً، حاول تسجيل الدخول.' };
+            return { success: false, error: 'البريد مسجل مسبقاً.' };
           }
           const newUser = { ...INITIAL_USER, id: `U-${Date.now()}`, email: normalizedEmail, password: pass, referralCode: 'MC-'+Math.floor(1000+Math.random()*9000) };
           const { error: insError } = await supabase.from('profiles').insert({ email: normalizedEmail, data: newUser });
@@ -136,7 +135,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           return { success: true };
         } catch (e: any) {
           setIsSyncing(false);
-          return { success: false, error: `فشل إنشاء الحساب: ${e.message}` };
+          return { success: false, error: `فشل الإنشاء: ${e.message}` };
         }
       },
       logout: () => { localStorage.removeItem(AUTH_KEY); setIsAuthenticated(false); setUser(INITIAL_USER); },
@@ -224,8 +223,8 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       toggleRole: () => setUser(p => ({ ...p, role: p.role === 'ADMIN' ? 'USER' : 'ADMIN' })),
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
       completeOnboarding: async () => {
-        // إذا كان المستخدم قد شاهد التعليمات بالفعل، لا تفعل شيئاً
-        if (userRef.current.hasSeenOnboarding) return;
+        const currentUserData = userRef.current;
+        if (currentUserData.hasSeenOnboarding) return;
 
         const gift: UserPackage = { 
           instanceId: `GIFT-${Date.now()}`, 
@@ -246,23 +245,25 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         const welcomeNotif = { 
           id: `N-${Date.now()}`, 
           title: "مبروك! هدية الترحيب", 
-          message: "لقد تم منحك جهاز Turbo S9 مجاناً لمدة 24 ساعة بمناسبة تسجيلك.", 
+          message: "لقد تم منحك جهاز Turbo S9 مجاناً لمدة 24 ساعة.", 
           type: NotificationType.SUCCESS, 
           date: new Date().toISOString(), 
           isRead: false 
         };
 
-        // تصحيح الخطأ: تم استبدال notifications بـ activePackages
-        const updatedUser = { 
-          ...userRef.current, 
+        const finalUser = { 
+          ...currentUserData, 
           hasSeenOnboarding: true,
           hasClaimedWelcomeGift: true,
-          activePackages: [gift, ...userRef.current.activePackages],
-          notifications: [welcomeNotif, ...userRef.current.notifications]
+          activePackages: [gift, ...currentUserData.activePackages],
+          notifications: [welcomeNotif, ...currentUserData.notifications]
         };
 
-        // حفظ التغييرات في السحابة وتحديث الحالة محلياً
-        await saveToCloud(updatedUser);
+        // تحديث الحالة فوراً ثم الحفظ في السحابة
+        setUser(finalUser);
+        if (supabase && finalUser.email) {
+          await supabase.from('profiles').upsert({ email: finalUser.email.toLowerCase(), data: finalUser }, { onConflict: 'email' });
+        }
       },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
       autoPilotMode,
@@ -272,7 +273,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         try {
           return encodeUnicode(JSON.stringify(userRef.current));
         } catch (e) {
-          console.error("Export Error:", e);
           return "";
         }
       },
