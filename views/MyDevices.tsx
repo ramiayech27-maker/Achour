@@ -62,10 +62,9 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
   return (
     <div 
       onClick={() => pkg.status === DeviceStatus.IDLE && setShowActivateModal(true)}
-      className={`group cursor-pointer flex flex-col bg-slate-900/40 rounded-2xl overflow-hidden transition-all active:scale-95 border border-white/5 hover:border-blue-500/30 shadow-md ${pkg.status === DeviceStatus.RUNNING ? 'ring-1 ring-blue-500/30' : ''}`}
+      className={`group cursor-pointer flex flex-col bg-slate-900/60 rounded-2xl overflow-hidden transition-all active:scale-95 border border-white/5 hover:border-blue-500/30 shadow-md ${pkg.status === DeviceStatus.RUNNING ? 'ring-1 ring-blue-500/30' : ''}`}
     >
-      {/* Image Container - Reduced Height and Compact View */}
-      <div className="relative w-full aspect-[16/9] bg-black overflow-hidden">
+      <div className="relative w-full aspect-square bg-black overflow-hidden">
         <img 
           src={pkg.icon} 
           alt={pkg.name} 
@@ -85,40 +84,34 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
 
       <div className="p-2 space-y-1">
         <div className="text-center">
-          <h3 className="text-white font-bold text-[10px] truncate leading-tight px-0.5">{pkg.name.split(' - ')[0]}</h3>
+          <h3 className="text-white font-bold text-[9px] truncate leading-tight px-0.5">{pkg.name.split(' - ')[0]}</h3>
           <p className={`font-black text-[7px] uppercase tracking-tighter mt-0.5 ${pkg.status === DeviceStatus.RUNNING ? 'text-emerald-400' : 'text-slate-500'}`}>
-            {pkg.status === DeviceStatus.RUNNING ? (isRtl ? 'جاري التعدين' : 'Mining') : (isRtl ? 'جاهز' : 'Idle')}
+            {pkg.status === DeviceStatus.RUNNING ? (isRtl ? 'نشط' : 'Active') : (isRtl ? 'متوقف' : 'Idle')}
           </p>
         </div>
 
         {pkg.status === DeviceStatus.RUNNING && (
-          <div className="space-y-1">
-            <div className="bg-black/40 p-1 rounded-lg border border-white/5 text-center">
-               <span className="text-emerald-400 font-black text-[9px] tabular-nums tracking-tighter block">
-                 +${currentEarnings.toFixed(3)}
-               </span>
-               <div className="w-full h-1 bg-slate-800/50 rounded-full overflow-hidden mt-1 mx-auto">
-                  <div className="h-full bg-blue-500 transition-all duration-1000 shadow-[0_0_5px_rgba(59,130,246,0.5)]" style={{ width: `${progress}%` }}></div>
-               </div>
-               <div className="flex justify-center mt-0.5 text-[7px] font-bold text-slate-500 gap-1">
-                  <span>{timeLeft}</span>
-               </div>
-            </div>
+          <div className="bg-black/40 p-1 rounded-lg border border-white/5 text-center">
+             <span className="text-emerald-400 font-black text-[8px] tabular-nums tracking-tighter block">
+               +${currentEarnings.toFixed(3)}
+             </span>
+             <div className="w-full h-0.5 bg-slate-800 rounded-full overflow-hidden mt-1">
+                <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${progress}%` }}></div>
+             </div>
+             <p className="text-[6px] text-slate-500 font-bold mt-0.5">{timeLeft}</p>
           </div>
         )}
 
         {pkg.status === DeviceStatus.IDLE && (
-          <div className="pt-0.5">
-             <div className="w-full py-1 bg-blue-600 text-white rounded-lg text-center font-black text-[9px] uppercase shadow-lg shadow-blue-600/10">
-               {isRtl ? 'تفعيل' : 'Start'}
-             </div>
+          <div className="w-full py-1 bg-blue-600 text-white rounded-lg text-center font-black text-[8px] uppercase shadow-lg shadow-blue-600/10">
+            {isRtl ? 'تفعيل' : 'Start'}
           </div>
         )}
       </div>
 
       {showActivateModal && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-xl animate-in fade-in" onClick={(e) => e.stopPropagation()}>
-          <div className="glass w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl text-center">
+          <div className="glass w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl text-center border border-white/10">
              <div className="w-16 h-16 bg-blue-600/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <TrendingUp size={32} />
              </div>
@@ -142,14 +135,14 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
                   <Zap size={18} className="text-blue-500" />
                 </button>
 
-                <button onClick={() => setShowActivateModal(false)} className="mt-4 text-[10px] text-slate-500 font-black uppercase tracking-widest">
+                <button onClick={() => setShowActivateModal(false)} className="mt-4 text-[10px] text-slate-500 font-black uppercase tracking-widest hover:text-white transition-colors">
                   {isRtl ? 'إلغاء' : 'Cancel'}
                 </button>
              </div>
              {activating && (
-                <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm rounded-[2.5rem] flex flex-col items-center justify-center z-20">
+                <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm rounded-[2.5rem] flex flex-col items-center justify-center z-20">
                    <Loader2 className="animate-spin text-blue-500 mb-2" size={32} />
-                   <p className="text-white text-[10px] font-black uppercase tracking-widest">Connecting to Global Pool...</p>
+                   <p className="text-white text-[10px] font-black uppercase tracking-widest">توصيل الخوادم...</p>
                 </div>
              )}
           </div>
@@ -165,7 +158,7 @@ const MyDevices = () => {
   const { isRtl } = useLanguage();
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-500 font-cairo pb-20 text-right" dir="rtl">
+    <div className="space-y-6 animate-in fade-in duration-500 font-cairo pb-24 text-right" dir="rtl">
       <header className="flex items-center justify-between gap-4 px-2">
         <div className="flex items-center gap-4">
           <button onClick={() => navigate(-1)} className="p-2.5 glass rounded-xl text-slate-400 hover:text-white transition-all active:scale-90 border border-white/5">

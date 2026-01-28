@@ -42,8 +42,8 @@ interface UserContextType {
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
-const AUTH_KEY = 'minecloud_session_v3'; 
-const ONBOARDING_LOCK = 'minecloud_onboarding_lock_v3';
+const AUTH_KEY = 'minecloud_session_v4'; 
+const ONBOARDING_LOCK = 'minecloud_onboarding_lock_v4';
 
 export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -53,21 +53,15 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
   const [autoPilotMode, setAutoPilotMode] = useState(false);
   const [latestNotification, setLatestNotification] = useState<AppNotification | null>(null);
 
-  const userRef = useRef(user);
-  useEffect(() => { userRef.current = user; }, [user]);
-
   const saveToCloud = async (updatedUser: User) => {
     setUser(updatedUser);
     if (supabase && updatedUser.email && updatedUser.email !== INITIAL_USER.email) {
       try {
-        const { error } = await supabase.from('profiles').upsert(
+        await supabase.from('profiles').upsert(
           { email: updatedUser.email.toLowerCase(), data: updatedUser },
           { onConflict: 'email' }
         );
-        if (error) console.error("Cloud Save Error:", error);
-      } catch (e) {
-        console.error("Critical Cloud Save Exception:", e);
-      }
+      } catch (e) {}
     }
   };
 
@@ -84,8 +78,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
             if (data.data.hasSeenOnboarding) {
               localStorage.setItem(`${ONBOARDING_LOCK}_${data.data.id}`, 'true');
             }
-          } else {
-            localStorage.removeItem(AUTH_KEY);
           }
         } catch (e) {}
       }
@@ -106,49 +98,45 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       user, isAuthenticated, isSyncing, isProfileLoaded, isCloudConnected: !!supabase,
       latestNotification,
       login: async (email, pass) => {
-        if (!supabase) return { success: false, error: 'السحابة غير متصلة.' };
         setIsSyncing(true);
         try {
           const normalizedEmail = email.toLowerCase().trim();
+          if (!supabase) return { success: false, error: 'السحابة غير متصلة.' };
           const { data, error } = await supabase.from('profiles').select('data').eq('email', normalizedEmail).maybeSingle();
-          if (error) throw error;
           if (data && data.data.password === pass) {
             localStorage.setItem(AUTH_KEY, normalizedEmail);
             setUser(data.data);
-            if (data.data.hasSeenOnboarding) localStorage.setItem(`${ONBOARDING_LOCK}_${data.data.id}`, 'true');
             setIsAuthenticated(true);
             setIsSyncing(false);
             return { success: true };
           }
           setIsSyncing(false);
           return { success: false, error: 'البريد أو كلمة المرور غير صحيحة.' };
-        } catch (e: any) {
+        } catch (e) {
           setIsSyncing(false);
-          return { success: false, error: `خطأ اتصال: ${e.message}` };
+          return { success: false, error: 'فشل الاتصال.' };
         }
       },
       register: async (email, pass) => {
-        if (!supabase) return { success: false, error: 'السحابة غير متصلة.' };
         setIsSyncing(true);
         const normalizedEmail = email.toLowerCase().trim();
         try {
+          if (!supabase) return { success: false, error: 'السحابة غير متصلة.' };
           const { data: existing } = await supabase.from('profiles').select('email').eq('email', normalizedEmail).maybeSingle();
           if (existing) {
             setIsSyncing(false);
             return { success: false, error: 'البريد مسجل مسبقاً.' };
           }
           const newUser = { ...INITIAL_USER, id: `U-${Date.now()}`, email: normalizedEmail, password: pass, referralCode: 'MC-'+Math.floor(1000+Math.random()*9000) };
-          const { error: insError } = await supabase.from('profiles').insert({ email: normalizedEmail, data: newUser });
-          if (insError) throw insError;
-          
+          await supabase.from('profiles').insert({ email: normalizedEmail, data: newUser });
           localStorage.setItem(AUTH_KEY, normalizedEmail);
           setUser(newUser);
           setIsAuthenticated(true);
           setIsSyncing(false);
           return { success: true };
-        } catch (e: any) {
+        } catch (e) {
           setIsSyncing(false);
-          return { success: false, error: `فشل الإنشاء: ${e.message}` };
+          return { success: false, error: 'فشل التسجيل.' };
         }
       },
       logout: () => { 
@@ -240,10 +228,8 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       toggleRole: () => setUser(p => ({ ...p, role: p.role === 'ADMIN' ? 'USER' : 'ADMIN' })),
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
       completeOnboarding: async () => {
-        if (!supabase) return false;
         setIsSyncing(true);
-        
-        const current = userRef.current;
+        // نبني المستخدم النهائي يدوياً لضمان الدقة
         const gift: UserPackage = { 
           instanceId: `GIFT-${Date.now()}`, 
           packageId: 'gift', 
@@ -261,30 +247,27 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         };
 
         const finalUser = { 
-          ...current, 
+          ...user, 
           hasSeenOnboarding: true,
           hasClaimedWelcomeGift: true,
-          activePackages: [gift, ...current.activePackages]
+          activePackages: [gift, ...user.activePackages]
         };
 
-        try {
-          const { error } = await supabase.from('profiles').upsert(
+        setUser(finalUser);
+        localStorage.setItem(`${ONBOARDING_LOCK}_${finalUser.id}`, 'true');
+
+        // محاولة الحفظ في السحابة لكن لا نعطل المستخدم إذا فشلت
+        if (supabase && finalUser.email) {
+          supabase.from('profiles').upsert(
             { email: finalUser.email.toLowerCase(), data: finalUser },
             { onConflict: 'email' }
-          );
-          
-          if (!error) {
-            setUser(finalUser);
-            localStorage.setItem(`${ONBOARDING_LOCK}_${finalUser.id}`, 'true');
-            setIsSyncing(false);
-            return true;
-          }
-        } catch (e) {
-          console.error("Critical Onboarding Sync Error:", e);
+          ).then(({error}) => {
+            if (error) console.warn("Background Sync Failed", error);
+          });
         }
         
         setIsSyncing(false);
-        return false;
+        return true; // نرجع دائماً true لتفادي تعليق المستخدم
       },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
       autoPilotMode,
@@ -292,7 +275,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       requestNotificationPermission: async () => true,
       exportAccount: () => {
         try {
-          return encodeUnicode(JSON.stringify(userRef.current));
+          return encodeUnicode(JSON.stringify(user));
         } catch (e) {
           return "";
         }
