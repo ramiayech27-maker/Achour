@@ -83,6 +83,13 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     }
   };
 
+  // وظيفة لتشفير النص مع دعم اليونيكود (العربية)
+  const encodeUnicode = (str: string) => {
+    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => {
+      return String.fromCharCode(parseInt(p1, 16));
+    }));
+  };
+
   return (
     <UserContext.Provider value={{
       user, isAuthenticated, isSyncing, isProfileLoaded, isCloudConnected: !!supabase,
@@ -218,7 +225,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       toggleRole: () => setUser(p => ({ ...p, role: p.role === 'ADMIN' ? 'USER' : 'ADMIN' })),
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
       completeOnboarding: async () => {
-        // إنشاء جهاز الهدية
         const gift: UserPackage = { 
           instanceId: `GIFT-${Date.now()}`, 
           packageId: 'gift', 
@@ -244,7 +250,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
 
         await saveToCloud(updatedUser);
         
-        // إضافة تنبيه للمستخدم
         const welcomeNotif = { 
           id: `N-${Date.now()}`, 
           title: "مبروك! هدية الترحيب", 
@@ -259,7 +264,15 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       autoPilotMode,
       toggleAutoPilot: () => setAutoPilotMode(!autoPilotMode),
       requestNotificationPermission: async () => true,
-      exportAccount: () => btoa(JSON.stringify(userRef.current)),
+      exportAccount: () => {
+        try {
+          // استخدام التشفير الآمن الذي يدعم العربية
+          return encodeUnicode(JSON.stringify(userRef.current));
+        } catch (e) {
+          console.error("Export Error:", e);
+          return "";
+        }
+      },
       markNotificationsAsRead: () => setUser(p => ({ ...p, notifications: p.notifications.map(n => ({ ...n, isRead: true })) })),
       clearNotifications: () => setUser(p => ({ ...p, notifications: [] }))
     }}>
