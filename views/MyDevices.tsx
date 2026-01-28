@@ -19,7 +19,7 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
   const [activating, setActivating] = useState(false);
   const [now, setNow] = useState(Date.now());
   
-  const isGift = pkg.instanceId.startsWith('GIFT-');
+  const isGift = pkg.instanceId.includes('GIFT');
 
   const currentEarnings = useMemo(() => {
     if (pkg.status !== DeviceStatus.RUNNING || !pkg.lastActivationDate) return 0;
@@ -64,7 +64,7 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
       onClick={() => pkg.status === DeviceStatus.IDLE && setShowActivateModal(true)}
       className={`group cursor-pointer flex flex-col bg-slate-900/40 rounded-2xl overflow-hidden transition-all active:scale-95 border border-white/5 hover:border-blue-500/30 shadow-md ${pkg.status === DeviceStatus.RUNNING ? 'ring-1 ring-blue-500/30' : ''}`}
     >
-      {/* Image Container - Strictly Small Square */}
+      {/* Image Container - Square & Compact */}
       <div className="relative w-full aspect-square bg-black overflow-hidden">
         <img 
           src={pkg.icon} 

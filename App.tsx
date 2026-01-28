@@ -24,7 +24,7 @@ import { INITIAL_USER } from './constants';
 
 const LOGO_URL = "https://c.top4top.io/p_3676pdlj43.jpg";
 const GIFT_IMAGE = "https://j.top4top.io/p_3669iibh30.jpg";
-const ONBOARDING_LOCK_PREFIX = 'minecloud_gift_lock_v7_';
+const LOCAL_GIFT_LOCK = 'minecloud_gift_applied_v5_';
 
 const SplashScreen = () => (
   <div className="fixed inset-0 z-[500] bg-slate-950 flex flex-col items-center justify-center p-8 font-cairo text-right">
@@ -48,18 +48,11 @@ const AppRoutes = () => {
   const [showGiftSuccess, setShowGiftSuccess] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // فحص ما إذا كان المستخدم يمتلك الهدية فعلياً في قائمة أجهزته (أقوى فحص)
-  const userHasGiftInList = user.activePackages.some(p => p.instanceId.startsWith('GIFT-'));
-  // قفل محلي إضافي
-  const hasLocalLock = localStorage.getItem(`${ONBOARDING_LOCK_PREFIX}${user.id}`) === 'true';
-
   const handleFinishOnboarding = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
-    
-    // وضع القفل المحلي فوراً قبل حتى الطلب السحابي
-    localStorage.setItem(`${ONBOARDING_LOCK_PREFIX}${user.id}`, 'true');
-    
+    // قفل محلي فوري
+    localStorage.setItem(`${LOCAL_GIFT_LOCK}${user.email}`, 'true');
     const success = await completeOnboarding();
     setIsProcessing(false);
     if (success) {
@@ -69,12 +62,15 @@ const AppRoutes = () => {
 
   if (!isProfileLoaded) return <SplashScreen />;
 
-  // الشروط النهائية لإظهار نافذة "قواعد التعدين"
+  // صمام الأمان: لا تظهر النافذة إذا كان الجهاز موجوداً فعلياً أو تم تعليم الحساب مسبقاً
+  const hasGiftDevice = user.activePackages.some(p => p.instanceId.includes('GIFT'));
+  const hasLocalLock = localStorage.getItem(`${LOCAL_GIFT_LOCK}${user.email}`) === 'true';
+  
   const shouldShowOnboarding = isAuthenticated && 
                                 !isSyncing && 
                                 user.email !== INITIAL_USER.email && 
                                 user.hasSeenOnboarding === false && 
-                                !userHasGiftInList && 
+                                !hasGiftDevice &&
                                 !hasLocalLock &&
                                 !showGiftSuccess;
 
@@ -110,7 +106,7 @@ const AppRoutes = () => {
               <Gift size={48} />
             </div>
             <h2 className="text-3xl font-black text-white mb-2 text-center">هدية جاهزة!</h2>
-            <p className="text-emerald-400 text-sm font-black uppercase tracking-widest mb-8 text-center">تم تفعيل جهازك المجاني</p>
+            <p className="text-emerald-400 text-sm font-black uppercase tracking-widest mb-8 text-center">تم تثبيت جهازك في السحابة</p>
             <div className="bg-slate-900 rounded-3xl p-4 border border-white/5 mb-8">
                <div className="aspect-video rounded-2xl overflow-hidden mb-4 border border-white/10">
                   <img src={GIFT_IMAGE} className="w-full h-full object-cover" alt="Turbo S9" />

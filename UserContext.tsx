@@ -43,7 +43,6 @@ interface UserContextType {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 const AUTH_KEY = 'minecloud_session_v4'; 
-const ONBOARDING_LOCK = 'minecloud_onboarding_lock_v4';
 
 export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -57,11 +56,14 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     setUser(updatedUser);
     if (supabase && updatedUser.email && updatedUser.email !== INITIAL_USER.email) {
       try {
-        await supabase.from('profiles').upsert(
+        const { error } = await supabase.from('profiles').upsert(
           { email: updatedUser.email.toLowerCase(), data: updatedUser },
           { onConflict: 'email' }
         );
-      } catch (e) {}
+        if (error) throw error;
+      } catch (e) {
+        console.error("Cloud Save Failed:", e);
+      }
     }
   };
 
@@ -75,11 +77,10 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           if (data && !error) {
             setUser(data.data);
             setIsAuthenticated(true);
-            if (data.data.hasSeenOnboarding) {
-              localStorage.setItem(`${ONBOARDING_LOCK}_${data.data.id}`, 'true');
-            }
           }
-        } catch (e) {}
+        } catch (e) {
+          console.error("Restore Session Failed:", e);
+        }
       }
       setIsSyncing(false);
       setIsProfileLoaded(true);
@@ -152,7 +153,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       },
       claimWelcomeGift: async () => {
         if (user.hasClaimedWelcomeGift) return false;
-        const gift: UserPackage = { instanceId: `GIFT-${Date.now()}`, packageId: 'gift', name: 'Turbo S9 - Welcome Gift', priceAtPurchase: 5, status: DeviceStatus.RUNNING, purchaseDate: Date.now(), lastActivationDate: Date.now(), expiryDate: Date.now() + 86400000, currentDurationDays: 1, currentDailyRate: 100, isClaimed: true, icon: 'https://j.top4top.io/p_3669iibh30.jpg', dailyProfit: 5 };
+        const gift: UserPackage = { instanceId: `GIFT-${user.id}-${Date.now()}`, packageId: 'gift', name: 'Turbo S9 - Welcome Gift', priceAtPurchase: 5, status: DeviceStatus.RUNNING, purchaseDate: Date.now(), lastActivationDate: Date.now(), expiryDate: Date.now() + 86400000, currentDurationDays: 1, currentDailyRate: 100, isClaimed: true, icon: 'https://j.top4top.io/p_3669iibh30.jpg', dailyProfit: 5 };
         await saveToCloud({ ...user, hasClaimedWelcomeGift: true, activePackages: [gift, ...user.activePackages] });
         return true;
       },
@@ -229,9 +230,9 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
       completeOnboarding: async () => {
         setIsSyncing(true);
-        // نبني المستخدم النهائي يدوياً لضمان الدقة
+        const giftId = `GIFT-USER-${user.id}`;
         const gift: UserPackage = { 
-          instanceId: `GIFT-${Date.now()}`, 
+          instanceId: giftId, 
           packageId: 'gift', 
           name: 'Turbo S9 - Welcome Gift', 
           priceAtPurchase: 5, 
@@ -250,24 +251,14 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           ...user, 
           hasSeenOnboarding: true,
           hasClaimedWelcomeGift: true,
-          activePackages: [gift, ...user.activePackages]
+          activePackages: [gift, ...user.activePackages.filter(p => p.instanceId !== giftId)]
         };
 
-        setUser(finalUser);
-        localStorage.setItem(`${ONBOARDING_LOCK}_${finalUser.id}`, 'true');
-
-        // محاولة الحفظ في السحابة لكن لا نعطل المستخدم إذا فشلت
-        if (supabase && finalUser.email) {
-          supabase.from('profiles').upsert(
-            { email: finalUser.email.toLowerCase(), data: finalUser },
-            { onConflict: 'email' }
-          ).then(({error}) => {
-            if (error) console.warn("Background Sync Failed", error);
-          });
-        }
+        // استخدام saveToCloud الموحد لضمان الحفظ السحابي
+        await saveToCloud(finalUser);
         
         setIsSyncing(false);
-        return true; // نرجع دائماً true لتفادي تعليق المستخدم
+        return true; 
       },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
       autoPilotMode,
