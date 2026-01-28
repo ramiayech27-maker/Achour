@@ -42,12 +42,13 @@ interface UserContextType {
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
-const AUTH_KEY = 'minecloud_session_v12';
+const AUTH_KEY = 'minecloud_session_v20'; // مفتاح جلسة جديد تماماً
+const ONBOARDING_LOCK = 'minecloud_onboarding_lock'; // القفل الفولاذي
 
 export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<User>(INITIAL_USER);
-  const [isSyncing, setIsSyncing] = useState(true); // نبدأ بـ true دائماً لضمان عدم عرض أي شيء قبل المزامنة
+  const [isSyncing, setIsSyncing] = useState(true); // نبدأ بـ true لمنع أي عرض خاطئ
   const [isProfileLoaded, setIsProfileLoaded] = useState(false);
   const [autoPilotMode, setAutoPilotMode] = useState(false);
   const [latestNotification, setLatestNotification] = useState<AppNotification | null>(null);
@@ -65,8 +66,11 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           if (data && !error) {
             setUser(data.data);
             setIsAuthenticated(true);
+            // إذا كانت البيانات في السحابة تقول تم المشاهدة، نتأكد من وضع القفل المحلي أيضاً
+            if (data.data.hasSeenOnboarding) {
+              localStorage.setItem(`${ONBOARDING_LOCK}_${data.data.id}`, 'true');
+            }
           } else {
-            // إذا فشل الجلب، نسجل الخروج
             localStorage.removeItem(AUTH_KEY);
           }
         } catch (e) {}
@@ -86,7 +90,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           { onConflict: 'email' }
         );
       } catch (e) {
-        console.error("Critical Sync Error:", e);
+        console.error("Critical Cloud Save Error:", e);
       }
     }
   };
@@ -111,6 +115,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           if (data && data.data.password === pass) {
             localStorage.setItem(AUTH_KEY, normalizedEmail);
             setUser(data.data);
+            if (data.data.hasSeenOnboarding) localStorage.setItem(`${ONBOARDING_LOCK}_${data.data.id}`, 'true');
             setIsAuthenticated(true);
             setIsSyncing(false);
             return { success: true };
@@ -236,13 +241,10 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
       completeOnboarding: async () => {
         setIsSyncing(true);
-        const currentUserData = userRef.current;
+        const current = userRef.current;
         
-        // التحقق المضاعف
-        if (currentUserData.hasSeenOnboarding || currentUserData.email === INITIAL_USER.email) {
-          setIsSyncing(false);
-          return;
-        }
+        // القفل الفولاذي: تحديث الذاكرة المحلية فوراً
+        localStorage.setItem(`${ONBOARDING_LOCK}_${current.id}`, 'true');
 
         const gift: UserPackage = { 
           instanceId: `GIFT-${Date.now()}`, 
@@ -261,21 +263,18 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         };
 
         const finalUser = { 
-          ...currentUserData, 
+          ...current, 
           hasSeenOnboarding: true,
           hasClaimedWelcomeGift: true,
-          activePackages: [gift, ...currentUserData.activePackages]
+          activePackages: [gift, ...current.activePackages]
         };
 
-        // تحديث محلي فوري
         setUser(finalUser);
-        
-        // حفظ في السحابة مع انتظار الأداء
+
         if (supabase && finalUser.email) {
-          await supabase.from('profiles').upsert(
-            { email: finalUser.email.toLowerCase(), data: finalUser },
-            { onConflict: 'email' }
-          );
+          try {
+            await supabase.from('profiles').upsert({ email: finalUser.email.toLowerCase(), data: finalUser }, { onConflict: 'email' });
+          } catch (e) {}
         }
         setIsSyncing(false);
       },

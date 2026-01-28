@@ -24,16 +24,17 @@ import { INITIAL_USER } from './constants';
 
 const LOGO_URL = "https://c.top4top.io/p_3676pdlj43.jpg";
 const GIFT_IMAGE = "https://j.top4top.io/p_3669iibh30.jpg";
+const ONBOARDING_LOCK = 'minecloud_onboarding_lock';
 
 const SplashScreen = () => (
-  <div className="fixed inset-0 z-[500] bg-slate-950 flex flex-col items-center justify-center p-8 font-cairo">
+  <div className="fixed inset-0 z-[500] bg-slate-950 flex flex-col items-center justify-center p-8 font-cairo text-right">
     <div className="relative mb-8">
       <div className="w-24 h-24 bg-blue-600 rounded-[2rem] overflow-hidden shadow-2xl animate-pulse">
         <img src={LOGO_URL} className="w-full h-full object-cover" alt="Loading" />
       </div>
       <div className="absolute -inset-4 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
     </div>
-    <h2 className="text-2xl font-black text-white mb-2">MineCloud</h2>
+    <h2 className="text-2xl font-black text-white mb-2 tracking-tight">MineCloud</h2>
     <div className="flex items-center gap-2 text-slate-500 font-bold text-sm tracking-tight">
       <Loader2 size={16} className="animate-spin" />
       <span>جاري تأمين الجلسة السحابية...</span>
@@ -56,15 +57,17 @@ const AppRoutes = () => {
 
   if (!isProfileLoaded) return <SplashScreen />;
 
-  // منطق العرض الذهبي: 
-  // 1. يجب أن يكون مسجلاً
-  // 2. يجب ألا تكون هناك مزامنة جارية
-  // 3. يجب أن يكون البريد حقيقياً وليس INITIAL_USER
-  // 4. يجب أن تكون قيمة hasSeenOnboarding هي false حصراً
+  // القفل الذهبي المحدث:
+  // 1. يجب أن يكون مسجلاً ومحملاً بالكامل
+  // 2. يجب ألا تكون هناك عملية مزامنة جارية (ننتظر Supabase)
+  // 3. يجب ألا يكون المستخدم هو المستخدم الافتراضي
+  // 4. السحابة تقول false والذاكرة المحلية فارغة تماماً لهذا المستخدم
+  const hasLocalLock = localStorage.getItem(`${ONBOARDING_LOCK}_${user.id}`) === 'true';
   const canShowOnboarding = isAuthenticated && 
                           !isSyncing && 
                           user.email !== INITIAL_USER.email && 
                           user.hasSeenOnboarding === false && 
+                          !hasLocalLock &&
                           !showGiftSuccess;
 
   return (
@@ -76,7 +79,7 @@ const AppRoutes = () => {
               <ShieldCheck size={48} />
             </div>
             <h3 className="text-2xl font-black text-white mb-4">قواعد التعدين</h3>
-            <p className="text-slate-400 text-sm mb-8 font-bold leading-relaxed">
+            <p className="text-slate-400 text-sm mb-8 font-bold leading-relaxed text-center">
               أهلاً بك في MineCloud! أنت هنا تمتلك قوة معالجة حقيقية. 
               تتم إضافة الأرباح لحظياً إلى رصيدك. هل أنت جاهز للبدء؟
             </p>
@@ -140,14 +143,12 @@ const AppRoutes = () => {
   );
 };
 
-// مكون AuthView المحدث داخلياً لسهولة التنسيق
 const AuthView = () => {
   const navigate = useNavigate();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { login, register, isCloudConnected } = useUser();
 
@@ -171,7 +172,7 @@ const AuthView = () => {
             <img src={LOGO_URL} alt="MineCloud" className="w-full h-full object-cover" />
           </div>
           <h2 className="text-3xl font-black text-white mb-2">{authMode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}</h2>
-          <p className="text-slate-500 text-xs font-bold">منصة التعدين السحابي الاحترافية</p>
+          <p className="text-slate-500 text-xs font-bold tracking-tight">منصة التعدين السحابي الاحترافية</p>
         </div>
         {error && <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl text-rose-400 text-xs font-bold animate-shake text-center">{error}</div>}
         <form className="space-y-4" onSubmit={handleSubmit}>
