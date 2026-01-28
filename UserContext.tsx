@@ -42,8 +42,7 @@ interface UserContextType {
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
-// مفتاح جلسة فريد لضمان عدم التضارب
-const AUTH_KEY = 'minecloud_session_v8_final';
+const AUTH_KEY = 'minecloud_session_v9_stable';
 
 export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -56,123 +55,85 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
   const userRef = useRef(user);
   useEffect(() => { userRef.current = user; }, [user]);
 
-  // 1. استعادة الجلسة والبيانات فوراً
   useEffect(() => {
-    const initSession = async () => {
+    const restoreSession = async () => {
       const savedEmail = localStorage.getItem(AUTH_KEY);
       if (savedEmail && supabase) {
         setIsSyncing(true);
         try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('data')
-            .eq('email', savedEmail.toLowerCase())
-            .maybeSingle();
-          
+          const { data, error } = await supabase.from('profiles').select('data').eq('email', savedEmail.toLowerCase()).maybeSingle();
           if (data && !error) {
             setUser(data.data);
             setIsAuthenticated(true);
-          } else {
-            // إذا لم نجد البيانات في السحابة، نمسح الجلسة المحلية
-            localStorage.removeItem(AUTH_KEY);
           }
-        } catch (e) {
-          console.error("Critical: Could not connect to Supabase");
-        }
+        } catch (e) {}
       }
       setIsProfileLoaded(true);
       setIsSyncing(false);
     };
-    initSession();
+    restoreSession();
   }, []);
 
-  // 2. مزامنة البيانات تلقائياً عند أي تغيير (Auto-Save)
   const saveToCloud = async (updatedUser: User) => {
     setUser(updatedUser);
     if (supabase && updatedUser.email && updatedUser.email !== INITIAL_USER.email) {
-      await supabase.from('profiles').upsert({ 
-        email: updatedUser.email.toLowerCase(), 
-        data: updatedUser 
-      }, { onConflict: 'email' });
+      try {
+        await supabase.from('profiles').upsert({ email: updatedUser.email.toLowerCase(), data: updatedUser }, { onConflict: 'email' });
+      } catch (e) {}
     }
   };
-
-  // 3. محرك الأرباح اللحظي (Mining Engine)
-  useEffect(() => {
-    if (!isAuthenticated || !isProfileLoaded) return;
-    const interval = setInterval(() => {
-      setUser(current => {
-        if (!current.activePackages || current.activePackages.length === 0) return current;
-        const now = Date.now();
-        let addedProfit = 0;
-        let hasStateChange = false;
-        
-        const updatedPackages = current.activePackages.map(pkg => {
-          if (pkg.status === DeviceStatus.RUNNING && pkg.expiryDate) {
-            if (now >= pkg.expiryDate) {
-              hasStateChange = true;
-              return { ...pkg, status: DeviceStatus.COMPLETED };
-            }
-            const daily = (pkg.priceAtPurchase * (pkg.currentDailyRate || 0)) / 100;
-            addedProfit += daily / 86400;
-          }
-          return pkg;
-        });
-
-        if (addedProfit > 0 || hasStateChange) {
-          return { 
-            ...current, 
-            balance: current.balance + addedProfit, 
-            totalEarnings: current.totalEarnings + addedProfit,
-            activePackages: updatedPackages 
-          };
-        }
-        return current;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated, isProfileLoaded]);
 
   return (
     <UserContext.Provider value={{
       user, isAuthenticated, isSyncing, isProfileLoaded, isCloudConnected: !!supabase,
       latestNotification,
       login: async (email, pass) => {
-        if (!supabase) return { success: false, error: 'Offline' };
+        if (!supabase) return { success: false, error: 'السحابة غير متصلة. يرجى مراجعة الإعدادات.' };
         setIsSyncing(true);
-        const { data } = await supabase.from('profiles').select('data').eq('email', email.toLowerCase()).maybeSingle();
-        if (data && data.data.password === pass) {
-          localStorage.setItem(AUTH_KEY, email.toLowerCase());
-          setUser(data.data);
+        try {
+          const { data, error } = await supabase.from('profiles').select('data').eq('email', email.toLowerCase().trim()).maybeSingle();
+          if (error) throw error;
+          if (data && data.data.password === pass) {
+            localStorage.setItem(AUTH_KEY, email.toLowerCase().trim());
+            setUser(data.data);
+            setIsAuthenticated(true);
+            setIsSyncing(false);
+            return { success: true };
+          }
+          setIsSyncing(false);
+          return { success: false, error: 'البريد أو كلمة المرور غير صحيحة.' };
+        } catch (e: any) {
+          setIsSyncing(false);
+          return { success: false, error: `خطأ اتصال: ${e.message}` };
+        }
+      },
+      register: async (email, pass) => {
+        if (!supabase) return { success: false, error: 'السحابة غير متصلة. يرجى إضافة SUPABASE_URL.' };
+        if (!pass || pass.length < 6) return { success: false, error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.' };
+        
+        setIsSyncing(true);
+        const normalizedEmail = email.toLowerCase().trim();
+        try {
+          const { data: existing } = await supabase.from('profiles').select('email').eq('email', normalizedEmail).maybeSingle();
+          if (existing) {
+            setIsSyncing(false);
+            return { success: false, error: 'هذا البريد مسجل مسبقاً، حاول تسجيل الدخول.' };
+          }
+          const newUser = { ...INITIAL_USER, id: `U-${Date.now()}`, email: normalizedEmail, password: pass, referralCode: 'MC-'+Math.floor(1000+Math.random()*9000) };
+          const { error: insError } = await supabase.from('profiles').insert({ email: normalizedEmail, data: newUser });
+          if (insError) throw insError;
+          
+          localStorage.setItem(AUTH_KEY, normalizedEmail);
+          setUser(newUser);
           setIsAuthenticated(true);
           setIsSyncing(false);
           return { success: true };
-        }
-        setIsSyncing(false);
-        return { success: false, error: 'خطأ في البريد أو كلمة المرور' };
-      },
-      register: async (email, pass) => {
-        if (!supabase) return { success: false };
-        setIsSyncing(true);
-        const normalizedEmail = email.toLowerCase().trim();
-        const { data: existing } = await supabase.from('profiles').select('email').eq('email', normalizedEmail).maybeSingle();
-        if (existing) {
+        } catch (e: any) {
           setIsSyncing(false);
-          return { success: false, error: 'البريد مسجل مسبقاً' };
+          return { success: false, error: `فشل إنشاء الحساب: ${e.message}` };
         }
-        const newUser = { ...INITIAL_USER, id: `U-${Date.now()}`, email: normalizedEmail, password: pass, referralCode: 'MC-'+Math.floor(1000+Math.random()*9000) };
-        await supabase.from('profiles').insert({ email: normalizedEmail, data: newUser });
-        localStorage.setItem(AUTH_KEY, normalizedEmail);
-        setUser(newUser);
-        setIsAuthenticated(true);
-        setIsSyncing(false);
-        return { success: true };
       },
-      logout: () => { 
-        localStorage.removeItem(AUTH_KEY); 
-        setIsAuthenticated(false); 
-        setUser(INITIAL_USER); 
-      },
+      logout: () => { localStorage.removeItem(AUTH_KEY); setIsAuthenticated(false); setUser(INITIAL_USER); },
       purchaseDevice: async (pkg) => {
         if (user.balance < pkg.price) return false;
         const newPkg: UserPackage = { instanceId: `D-${Date.now()}`, packageId: pkg.id, name: pkg.name, priceAtPurchase: pkg.price, status: DeviceStatus.IDLE, purchaseDate: Date.now(), isClaimed: true, icon: pkg.icon, dailyProfit: (pkg.price * pkg.dailyProfitPercent)/100 };
@@ -180,28 +141,9 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         return true;
       },
       claimWelcomeGift: async () => {
-        // حماية قصوى: منع إرسال الهدية إذا كانت قد تم استلامها مسبقاً
         if (user.hasClaimedWelcomeGift) return false;
-        
-        const gift: UserPackage = { 
-          instanceId: `GIFT-${Date.now()}`, 
-          packageId: 'gift', 
-          name: 'Turbo S9 - Welcome Gift', 
-          priceAtPurchase: 5, 
-          status: DeviceStatus.RUNNING, 
-          purchaseDate: Date.now(), 
-          lastActivationDate: Date.now(), 
-          expiryDate: Date.now() + 86400000, 
-          currentDurationDays: 1, 
-          currentDailyRate: 100, 
-          isClaimed: true, 
-          icon: 'https://j.top4top.io/p_3669iibh30.jpg', 
-          dailyProfit: 5 
-        };
-        
-        // التحديث في السحابة فوراً قبل أي شيء
-        const updated = { ...user, hasClaimedWelcomeGift: true, activePackages: [gift, ...user.activePackages] };
-        await saveToCloud(updated);
+        const gift: UserPackage = { instanceId: `GIFT-${Date.now()}`, packageId: 'gift', name: 'Turbo S9 - Welcome Gift', priceAtPurchase: 5, status: DeviceStatus.RUNNING, purchaseDate: Date.now(), lastActivationDate: Date.now(), expiryDate: Date.now() + 86400000, currentDurationDays: 1, currentDailyRate: 100, isClaimed: true, icon: 'https://j.top4top.io/p_3669iibh30.jpg', dailyProfit: 5 };
+        await saveToCloud({ ...user, hasClaimedWelcomeGift: true, activePackages: [gift, ...user.activePackages] });
         return true;
       },
       activateCycle: async (id, days, rate) => {

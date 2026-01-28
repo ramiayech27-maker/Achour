@@ -1,28 +1,27 @@
 
 /**
  * إعدادات الربط بـ Supabase
- * يتم جلب هذه القيم من متغيرات البيئة التي قمنا بتعريفها في vite.config.ts
+ * يتم جلب هذه القيم من متغيرات البيئة التي قمنا بتعريفها في Netlify
  */
 
-// جلب القيم المحقونة من عملية البناء
 const envUrl = process.env.SUPABASE_URL;
 const envKey = process.env.SUPABASE_ANON_KEY;
 
-// القيم الافتراضية للتنبيه (Fallback)
 const placeholderUrl = "https://your-project-id.supabase.co";
 const placeholderKey = "your-public-anon-key-here";
 
-export const SUPABASE_URL = (envUrl && envUrl !== "undefined" && envUrl !== "") ? envUrl : placeholderUrl;
-export const SUPABASE_ANON_KEY = (envKey && envKey !== "undefined" && envKey !== "") ? envKey : placeholderKey;
+// التحقق مما إذا كانت القيم حقيقية أم مجرد نصوص افتراضية
+const isRealUrl = envUrl && envUrl.startsWith('http') && !envUrl.includes("your-project-id");
+const isRealKey = envKey && envKey.length > 20 && !envKey.includes("anon-key");
 
-// نظام تشخيص الحالة للمستخدم في المتصفح
+export const SUPABASE_URL = isRealUrl ? envUrl : placeholderUrl;
+export const SUPABASE_ANON_KEY = isRealKey ? envKey : placeholderKey;
+
 if (typeof window !== 'undefined') {
-  const isConfigured = SUPABASE_URL !== placeholderUrl && SUPABASE_ANON_KEY !== placeholderKey;
-  
-  if (isConfigured) {
-    console.log("%c [MineCloud] Cloud Core: Connected & Synced ✅ ", "background: #064e3b; color: #10b981; font-weight: bold; border-radius: 4px; padding: 2px 5px;");
+  if (isRealUrl && isRealKey) {
+    console.log("%c [MineCloud] Cloud Core: Connected Successfully ✅ ", "background: #064e3b; color: #10b981; font-weight: bold; padding: 4px; border-radius: 4px;");
   } else {
-    console.warn("%c [MineCloud] Cloud Core: Waiting for Environment Variables... ⏳ ", "background: #451a03; color: #f59e0b; font-weight: bold; border-radius: 4px; padding: 2px 5px;");
-    console.info("%c ملاحظة: إذا كان هذا الموقع منشوراً على Netlify، تأكد من إضافة SUPABASE_URL و SUPABASE_ANON_KEY في الإعدادات. ", "color: #94a3b8; font-style: italic;");
+    console.error("%c [MineCloud] Cloud Core: DISCONNECTED! ❌ ", "background: #450a0a; color: #f87171; font-weight: bold; padding: 4px; border-radius: 4px;");
+    console.info("%c تنبيه: يرجى إضافة SUPABASE_URL و SUPABASE_ANON_KEY في إعدادات Netlify لكي يعمل التسجيل. ", "color: #94a3b8; font-style: italic;");
   }
 }
