@@ -28,7 +28,7 @@ interface UserContextType {
   markChatAsRead: () => void;
   toggleRole: () => void;
   resetSystem: () => void;
-  completeOnboarding: () => void;
+  completeOnboarding: () => Promise<void>;
   confirmRecoveryKeySaved: () => void;
   autoPilotMode: boolean;
   toggleAutoPilot: () => void;
@@ -217,7 +217,44 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       },
       toggleRole: () => setUser(p => ({ ...p, role: p.role === 'ADMIN' ? 'USER' : 'ADMIN' })),
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
-      completeOnboarding: () => saveToCloud({ ...user, hasSeenOnboarding: true }),
+      completeOnboarding: async () => {
+        // إنشاء جهاز الهدية
+        const gift: UserPackage = { 
+          instanceId: `GIFT-${Date.now()}`, 
+          packageId: 'gift', 
+          name: 'Turbo S9 - Welcome Gift', 
+          priceAtPurchase: 5, 
+          status: DeviceStatus.RUNNING, 
+          purchaseDate: Date.now(), 
+          lastActivationDate: Date.now(), 
+          expiryDate: Date.now() + 86400000, 
+          currentDurationDays: 1, 
+          currentDailyRate: 100, 
+          isClaimed: true, 
+          icon: 'https://j.top4top.io/p_3669iibh30.jpg', 
+          dailyProfit: 5 
+        };
+
+        const updatedUser = { 
+          ...user, 
+          hasSeenOnboarding: true,
+          hasClaimedWelcomeGift: true,
+          activePackages: user.hasClaimedWelcomeGift ? user.activePackages : [gift, ...user.activePackages]
+        };
+
+        await saveToCloud(updatedUser);
+        
+        // إضافة تنبيه للمستخدم
+        const welcomeNotif = { 
+          id: `N-${Date.now()}`, 
+          title: "مبروك! هدية الترحيب", 
+          message: "لقد تم منحك جهاز Turbo S9 مجاناً لمدة 24 ساعة بمناسبة تسجيلك.", 
+          type: NotificationType.SUCCESS, 
+          date: new Date().toISOString(), 
+          isRead: false 
+        };
+        setUser(p => ({ ...p, notifications: [welcomeNotif, ...p.notifications] }));
+      },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
       autoPilotMode,
       toggleAutoPilot: () => setAutoPilotMode(!autoPilotMode),
