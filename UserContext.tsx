@@ -83,7 +83,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     }
   };
 
-  // وظيفة لتشفير النص مع دعم اليونيكود (العربية)
   const encodeUnicode = (str: string) => {
     return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => {
       return String.fromCharCode(parseInt(p1, 16));
@@ -225,6 +224,9 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       toggleRole: () => setUser(p => ({ ...p, role: p.role === 'ADMIN' ? 'USER' : 'ADMIN' })),
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
       completeOnboarding: async () => {
+        // إذا كان المستخدم قد شاهد التعليمات بالفعل، لا تفعل شيئاً
+        if (userRef.current.hasSeenOnboarding) return;
+
         const gift: UserPackage = { 
           instanceId: `GIFT-${Date.now()}`, 
           packageId: 'gift', 
@@ -241,15 +243,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           dailyProfit: 5 
         };
 
-        const updatedUser = { 
-          ...user, 
-          hasSeenOnboarding: true,
-          hasClaimedWelcomeGift: true,
-          activePackages: user.hasClaimedWelcomeGift ? user.activePackages : [gift, ...user.activePackages]
-        };
-
-        await saveToCloud(updatedUser);
-        
         const welcomeNotif = { 
           id: `N-${Date.now()}`, 
           title: "مبروك! هدية الترحيب", 
@@ -258,7 +251,18 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           date: new Date().toISOString(), 
           isRead: false 
         };
-        setUser(p => ({ ...p, notifications: [welcomeNotif, ...p.notifications] }));
+
+        // تحديث كل شيء في كائن واحد لضمان الحفظ المرة الواحدة
+        const updatedUser = { 
+          ...userRef.current, 
+          hasSeenOnboarding: true,
+          hasClaimedWelcomeGift: true,
+          activePackages: userRef.current.hasClaimedWelcomeGift ? userRef.current.activePackages : [gift, ...userRef.current.activePackages],
+          notifications: [welcomeNotif, ...userRef.current.notifications]
+        };
+
+        // حفظ التغييرات في السحابة وتحديث الحالة محلياً
+        await saveToCloud(updatedUser);
       },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
       autoPilotMode,
@@ -266,7 +270,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       requestNotificationPermission: async () => true,
       exportAccount: () => {
         try {
-          // استخدام التشفير الآمن الذي يدعم العربية
           return encodeUnicode(JSON.stringify(userRef.current));
         } catch (e) {
           console.error("Export Error:", e);
