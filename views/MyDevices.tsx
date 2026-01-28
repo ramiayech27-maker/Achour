@@ -64,12 +64,12 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
       onClick={() => pkg.status === DeviceStatus.IDLE && setShowActivateModal(true)}
       className={`group cursor-pointer flex flex-col bg-slate-900/60 rounded-[1.5rem] overflow-hidden transition-all active:scale-95 border border-white/5 hover:border-blue-500/30 shadow-lg ${pkg.status === DeviceStatus.RUNNING ? 'ring-1 ring-blue-500/40' : ''}`}
     >
-      {/* Image Container - Reduced height and aspect ratio */}
-      <div className="relative w-full aspect-video bg-black overflow-hidden">
+      {/* Image Container - Enforced Aspect Ratio for compact view */}
+      <div className="relative w-full aspect-[16/10] bg-black overflow-hidden">
         <img 
           src={pkg.icon} 
           alt={pkg.name} 
-          className={`w-full h-full object-cover transition-opacity duration-700 ${pkg.status === DeviceStatus.RUNNING ? 'opacity-100 scale-105' : 'opacity-40'}`} 
+          className={`w-full h-full object-cover transition-opacity duration-700 ${pkg.status === DeviceStatus.RUNNING ? 'opacity-100 scale-105' : 'opacity-30'}`} 
         />
         
         {pkg.status === DeviceStatus.RUNNING && (
@@ -78,26 +78,26 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
           </div>
         )}
 
-        <div className="absolute top-1.5 left-1.5 bg-black/70 backdrop-blur-md px-1.5 py-0.5 rounded-lg border border-white/10">
-           <p className="text-[7px] text-white font-black uppercase">{isGift ? (isRtl ? 'هدية' : 'Gift') : (isRtl ? 'أصلي' : 'Pro')}</p>
+        <div className="absolute top-1 left-1 bg-black/80 backdrop-blur-md px-1.5 py-0.5 rounded-lg border border-white/10">
+           <p className="text-[6px] text-white font-black uppercase">{isGift ? (isRtl ? 'هدية' : 'Gift') : (isRtl ? 'أصلي' : 'Pro')}</p>
         </div>
       </div>
 
-      <div className="p-3 space-y-2">
+      <div className="p-2 space-y-1.5">
         <div className="text-center">
-          <h3 className="text-white font-black text-[9px] truncate leading-tight">{pkg.name.split(' - ')[0]}</h3>
-          <p className={`font-black text-[7px] uppercase tracking-widest mt-0.5 ${pkg.status === DeviceStatus.RUNNING ? 'text-emerald-400' : 'text-slate-500'}`}>
+          <h3 className="text-white font-black text-[9px] truncate leading-tight px-1">{pkg.name.split(' - ')[0]}</h3>
+          <p className={`font-black text-[6px] uppercase tracking-widest mt-0.5 ${pkg.status === DeviceStatus.RUNNING ? 'text-emerald-400' : 'text-slate-500'}`}>
             {pkg.status === DeviceStatus.RUNNING ? (isRtl ? 'نشط' : 'Running') : (isRtl ? 'متوقف' : 'Idle')}
           </p>
         </div>
 
         {pkg.status === DeviceStatus.RUNNING && (
           <div className="space-y-1">
-            <div className="bg-black/60 p-1.5 rounded-xl border border-white/5 text-center">
-               <span className="text-emerald-400 font-black text-[10px] tabular-nums tracking-tighter block">
+            <div className="bg-black/60 p-1 rounded-xl border border-white/5 text-center">
+               <span className="text-emerald-400 font-black text-[9px] tabular-nums tracking-tighter block">
                  +${currentEarnings.toFixed(3)}
                </span>
-               <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden mt-1 mx-auto">
+               <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden mt-1 mx-auto max-w-[80%]">
                   <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${progress}%` }}></div>
                </div>
                <div className="flex justify-center mt-1 text-[6px] font-bold text-slate-500 gap-1">
@@ -149,7 +149,7 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
              {activating && (
                 <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm rounded-[2.5rem] flex flex-col items-center justify-center z-20">
                    <Loader2 className="animate-spin text-blue-500 mb-2" size={32} />
-                   <p className="text-white text-[10px] font-black uppercase tracking-widest">Injected into Global Pool...</p>
+                   <p className="text-white text-[10px] font-black uppercase tracking-widest">Connecting to Global Pool...</p>
                 </div>
              )}
           </div>
@@ -173,7 +173,7 @@ const MyDevices = () => {
           </button>
           <div>
             <h1 className="text-2xl font-black text-white">{isRtl ? 'أجهزتي' : 'My Devices'}</h1>
-            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{isRtl ? 'وحدات المعالجة' : 'Mining Units'}</p>
+            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{isRtl ? 'إدارة وحدات التعدين' : 'Mining Units'}</p>
           </div>
         </div>
         <div className="bg-blue-600/10 border border-blue-500/20 px-3 py-1.5 rounded-xl flex items-center gap-2">
@@ -183,7 +183,7 @@ const MyDevices = () => {
       </header>
 
       {user.activePackages.length > 0 ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-5xl mx-auto">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 max-w-5xl mx-auto">
           {user.activePackages.map((pkg) => <DeviceCard key={pkg.instanceId} pkg={pkg} />)}
         </div>
       ) : (

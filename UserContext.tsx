@@ -42,8 +42,7 @@ interface UserContextType {
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
-const AUTH_KEY = 'minecloud_session_v9_stable';
-const ONBOARDING_KEY = 'minecloud_onboarding_seen';
+const AUTH_KEY = 'minecloud_session_v11';
 
 export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -59,23 +58,18 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
   useEffect(() => {
     const restoreSession = async () => {
       const savedEmail = localStorage.getItem(AUTH_KEY);
-      const localOnboarding = localStorage.getItem(ONBOARDING_KEY) === 'true';
-
       if (savedEmail && supabase) {
         setIsSyncing(true);
         try {
           const { data, error } = await supabase.from('profiles').select('data').eq('email', savedEmail.toLowerCase()).maybeSingle();
           if (data && !error) {
-            const cloudData = data.data;
-            // دمج حالة الأونبوردنج المحلية مع السحابية لضمان الأمان
-            if (localOnboarding) cloudData.hasSeenOnboarding = true;
-            setUser(cloudData);
+            setUser(data.data);
             setIsAuthenticated(true);
           }
         } catch (e) {}
+        setIsSyncing(false);
       }
       setIsProfileLoaded(true);
-      setIsSyncing(false);
     };
     restoreSession();
   }, []);
@@ -85,7 +79,9 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     if (supabase && updatedUser.email && updatedUser.email !== INITIAL_USER.email) {
       try {
         await supabase.from('profiles').upsert({ email: updatedUser.email.toLowerCase(), data: updatedUser }, { onConflict: 'email' });
-      } catch (e) {}
+      } catch (e) {
+        console.error("Cloud Save Failed:", e);
+      }
     }
   };
 
@@ -108,8 +104,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           if (error) throw error;
           if (data && data.data.password === pass) {
             localStorage.setItem(AUTH_KEY, normalizedEmail);
-            // تحديث قفل الأونبوردنج المحلي إذا كان موجوداً في السحابة
-            if (data.data.hasSeenOnboarding) localStorage.setItem(ONBOARDING_KEY, 'true');
             setUser(data.data);
             setIsAuthenticated(true);
             setIsSyncing(false);
@@ -148,7 +142,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       },
       logout: () => { 
         localStorage.removeItem(AUTH_KEY); 
-        localStorage.removeItem(ONBOARDING_KEY);
         setIsAuthenticated(false); 
         setUser(INITIAL_USER); 
       },
@@ -236,11 +229,11 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       toggleRole: () => setUser(p => ({ ...p, role: p.role === 'ADMIN' ? 'USER' : 'ADMIN' })),
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
       completeOnboarding: async () => {
-        // 1. القفل الفوري والمحلي
-        localStorage.setItem(ONBOARDING_KEY, 'true');
-        
         const currentUserData = userRef.current;
+        // منع التكرار إذا كانت الحالة في الذاكرة الحالية true
         if (currentUserData.hasSeenOnboarding) return;
+
+        setIsSyncing(true);
 
         const gift: UserPackage = { 
           instanceId: `GIFT-${Date.now()}`, 
@@ -258,38 +251,28 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           dailyProfit: 5 
         };
 
-        const welcomeNotif = { 
-          id: `N-${Date.now()}`, 
-          title: "مبروك! هدية الترحيب", 
-          message: "لقد تم منحك جهاز Turbo S9 مجاناً لمدة 24 ساعة.", 
-          type: NotificationType.SUCCESS, 
-          date: new Date().toISOString(), 
-          isRead: false 
-        };
-
         const finalUser = { 
           ...currentUserData, 
           hasSeenOnboarding: true,
           hasClaimedWelcomeGift: true,
-          activePackages: [gift, ...currentUserData.activePackages],
-          notifications: [welcomeNotif, ...currentUserData.notifications]
+          activePackages: [gift, ...currentUserData.activePackages]
         };
 
-        // 2. تحديث الحالة فوراً محلياً
+        // تحديث محلي فوري
         setUser(finalUser);
         
-        // 3. الحفظ الأكيد في السحابة
+        // حفظ في السحابة مع انتظار التأكيد
         if (supabase && finalUser.email) {
           try {
-            const { error } = await supabase.from('profiles').upsert(
+            await supabase.from('profiles').upsert(
               { email: finalUser.email.toLowerCase(), data: finalUser },
               { onConflict: 'email' }
             );
-            if (error) throw error;
           } catch (e) {
-            console.error("Critical Cloud Save Error:", e);
+            console.error("Critical Onboarding Sync Error:", e);
           }
         }
+        setIsSyncing(false);
       },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
       autoPilotMode,
