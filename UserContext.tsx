@@ -42,12 +42,12 @@ interface UserContextType {
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
-const AUTH_KEY = 'minecloud_session_v11';
+const AUTH_KEY = 'minecloud_session_v12';
 
 export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<User>(INITIAL_USER);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(true); // نبدأ بـ true دائماً لضمان عدم عرض أي شيء قبل المزامنة
   const [isProfileLoaded, setIsProfileLoaded] = useState(false);
   const [autoPilotMode, setAutoPilotMode] = useState(false);
   const [latestNotification, setLatestNotification] = useState<AppNotification | null>(null);
@@ -65,10 +65,13 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           if (data && !error) {
             setUser(data.data);
             setIsAuthenticated(true);
+          } else {
+            // إذا فشل الجلب، نسجل الخروج
+            localStorage.removeItem(AUTH_KEY);
           }
         } catch (e) {}
-        setIsSyncing(false);
       }
+      setIsSyncing(false);
       setIsProfileLoaded(true);
     };
     restoreSession();
@@ -78,9 +81,12 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     setUser(updatedUser);
     if (supabase && updatedUser.email && updatedUser.email !== INITIAL_USER.email) {
       try {
-        await supabase.from('profiles').upsert({ email: updatedUser.email.toLowerCase(), data: updatedUser }, { onConflict: 'email' });
+        await supabase.from('profiles').upsert(
+          { email: updatedUser.email.toLowerCase(), data: updatedUser },
+          { onConflict: 'email' }
+        );
       } catch (e) {
-        console.error("Cloud Save Failed:", e);
+        console.error("Critical Sync Error:", e);
       }
     }
   };
@@ -229,11 +235,14 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       toggleRole: () => setUser(p => ({ ...p, role: p.role === 'ADMIN' ? 'USER' : 'ADMIN' })),
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
       completeOnboarding: async () => {
-        const currentUserData = userRef.current;
-        // منع التكرار إذا كانت الحالة في الذاكرة الحالية true
-        if (currentUserData.hasSeenOnboarding) return;
-
         setIsSyncing(true);
+        const currentUserData = userRef.current;
+        
+        // التحقق المضاعف
+        if (currentUserData.hasSeenOnboarding || currentUserData.email === INITIAL_USER.email) {
+          setIsSyncing(false);
+          return;
+        }
 
         const gift: UserPackage = { 
           instanceId: `GIFT-${Date.now()}`, 
@@ -261,16 +270,12 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         // تحديث محلي فوري
         setUser(finalUser);
         
-        // حفظ في السحابة مع انتظار التأكيد
+        // حفظ في السحابة مع انتظار الأداء
         if (supabase && finalUser.email) {
-          try {
-            await supabase.from('profiles').upsert(
-              { email: finalUser.email.toLowerCase(), data: finalUser },
-              { onConflict: 'email' }
-            );
-          } catch (e) {
-            console.error("Critical Onboarding Sync Error:", e);
-          }
+          await supabase.from('profiles').upsert(
+            { email: finalUser.email.toLowerCase(), data: finalUser },
+            { onConflict: 'email' }
+          );
         }
         setIsSyncing(false);
       },

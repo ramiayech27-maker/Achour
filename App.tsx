@@ -20,6 +20,7 @@ import AIChatBot from './components/AIChatBot';
 import { UserProvider, useUser } from './UserContext';
 import { LanguageProvider, useLanguage } from './LanguageContext';
 import { Loader2, AlertCircle, ShieldCheck, Gift, Sparkles, PartyPopper, Rocket, TrendingUp, Mail, Lock, Database, Copy, CheckCircle2, Terminal } from 'lucide-react';
+import { INITIAL_USER } from './constants';
 
 const LOGO_URL = "https://c.top4top.io/p_3676pdlj43.jpg";
 const GIFT_IMAGE = "https://j.top4top.io/p_3669iibh30.jpg";
@@ -35,11 +36,111 @@ const SplashScreen = () => (
     <h2 className="text-2xl font-black text-white mb-2">MineCloud</h2>
     <div className="flex items-center gap-2 text-slate-500 font-bold text-sm tracking-tight">
       <Loader2 size={16} className="animate-spin" />
-      <span>جاري المزامنة مع شبكة التعدين...</span>
+      <span>جاري تأمين الجلسة السحابية...</span>
     </div>
   </div>
 );
 
+const AppRoutes = () => {
+  const navigate = useNavigate();
+  const { isAuthenticated, user, isProfileLoaded, isSyncing, completeOnboarding } = useUser();
+  const [showGiftSuccess, setShowGiftSuccess] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleFinishOnboarding = async () => {
+    setIsProcessing(true);
+    await completeOnboarding();
+    setIsProcessing(false);
+    setShowGiftSuccess(true);
+  };
+
+  if (!isProfileLoaded) return <SplashScreen />;
+
+  // منطق العرض الذهبي: 
+  // 1. يجب أن يكون مسجلاً
+  // 2. يجب ألا تكون هناك مزامنة جارية
+  // 3. يجب أن يكون البريد حقيقياً وليس INITIAL_USER
+  // 4. يجب أن تكون قيمة hasSeenOnboarding هي false حصراً
+  const canShowOnboarding = isAuthenticated && 
+                          !isSyncing && 
+                          user.email !== INITIAL_USER.email && 
+                          user.hasSeenOnboarding === false && 
+                          !showGiftSuccess;
+
+  return (
+    <>
+      {canShowOnboarding && (
+        <div className="fixed inset-0 z-[200] bg-slate-950/98 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-500">
+          <div className="glass p-10 rounded-[3rem] text-center max-w-sm border border-blue-500/20 shadow-2xl animate-in zoom-in-95 duration-500">
+            <div className="w-20 h-20 bg-blue-600/10 text-blue-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <ShieldCheck size={48} />
+            </div>
+            <h3 className="text-2xl font-black text-white mb-4">قواعد التعدين</h3>
+            <p className="text-slate-400 text-sm mb-8 font-bold leading-relaxed">
+              أهلاً بك في MineCloud! أنت هنا تمتلك قوة معالجة حقيقية. 
+              تتم إضافة الأرباح لحظياً إلى رصيدك. هل أنت جاهز للبدء؟
+            </p>
+            <button 
+              disabled={isProcessing}
+              onClick={handleFinishOnboarding} 
+              className="w-full py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-lg shadow-xl shadow-blue-600/20 active:scale-95 transition-all flex items-center justify-center"
+            >
+              {isProcessing ? <Loader2 className="animate-spin" /> : 'جاهز، دعنا نبدأ!'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showGiftSuccess && (
+        <div className="fixed inset-0 z-[300] bg-slate-950/95 backdrop-blur-3xl flex items-center justify-center p-6 animate-in fade-in duration-700">
+          <div className="glass p-10 rounded-[3.5rem] border-2 border-emerald-500/30 shadow-[0_0_50px_rgba(16,185,129,0.2)] max-w-sm w-full text-center relative">
+            <Sparkles className="absolute top-6 right-6 text-amber-400 animate-pulse" size={24} />
+            <div className="w-24 h-24 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-500/20">
+              <Gift size={48} />
+            </div>
+            <h2 className="text-3xl font-black text-white mb-2">هدية الترحيب!</h2>
+            <p className="text-emerald-400 text-sm font-black uppercase tracking-widest mb-8">تم تفعيل جهازك المجاني</p>
+            <div className="bg-slate-900 rounded-3xl p-4 border border-white/5 mb-8">
+               <div className="aspect-video rounded-2xl overflow-hidden mb-4 border border-white/10">
+                  <img src={GIFT_IMAGE} className="w-full h-full object-cover" alt="Turbo S9" />
+               </div>
+               <h4 className="text-white font-black text-sm">Turbo S9 - Welcome Gift</h4>
+               <p className="text-[10px] text-slate-500 font-bold mt-1">يربح 5$ خلال 24 ساعة</p>
+            </div>
+            <button 
+              onClick={() => { setShowGiftSuccess(false); navigate('/my-devices'); }} 
+              className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-3"
+            >
+              بدء التعدين الآن <Rocket size={20} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isAuthenticated && <AIChatBot />}
+      <Routes>
+        <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
+        <Route path="/auth" element={!isAuthenticated ? <AuthView /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={isAuthenticated ? <Layout userRole={user.role}><Dashboard /></Layout> : <Navigate to="/auth" replace />} />
+        <Route path="/market" element={isAuthenticated ? <Layout userRole={user.role}><Market /></Layout> : <Navigate to="/auth" replace />} />
+        <Route path="/my-devices" element={isAuthenticated ? <Layout userRole={user.role}><MyDevices /></Layout> : <Navigate to="/auth" replace />} />
+        <Route path="/chat" element={isAuthenticated ? <Layout userRole={user.role}><ChatRoom /></Layout> : <Navigate to="/auth" replace />} />
+        <Route path="/wallet" element={isAuthenticated ? <Layout userRole={user.role}><Wallet /></Layout> : <Navigate to="/auth" replace />} />
+        <Route path="/transactions" element={isAuthenticated ? <Layout userRole={user.role}><Transactions /></Layout> : <Navigate to="/auth" replace />} />
+        <Route path="/referrals" element={isAuthenticated ? <Layout userRole={user.role}><Referrals /></Layout> : <Navigate to="/auth" replace />} />
+        <Route path="/support" element={isAuthenticated ? <Layout userRole={user.role}><Support /></Layout> : <Navigate to="/auth" replace />} />
+        <Route path="/settings" element={isAuthenticated ? <Layout userRole={user.role}><Settings /></Layout> : <Navigate to="/auth" replace />} />
+        <Route path="/notifications" element={isAuthenticated ? <Layout userRole={user.role}><Notifications /></Layout> : <Navigate to="/auth" replace />} />
+        <Route path="/about" element={isAuthenticated ? <Layout userRole={user.role}><About /></Layout> : <Navigate to="/auth" replace />} />
+        <Route path="/privacy" element={isAuthenticated ? <Layout userRole={user.role}><Privacy /></Layout> : <Navigate to="/auth" replace />} />
+        {isAuthenticated && user.role === 'ADMIN' && <Route path="/admin" element={<Layout userRole={user.role}><Admin /></Layout>} />}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
+  );
+};
+
+// مكون AuthView المحدث داخلياً لسهولة التنسيق
 const AuthView = () => {
   const navigate = useNavigate();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -85,94 +186,6 @@ const AuthView = () => {
         </button>
       </div>
     </div>
-  );
-};
-
-const AppRoutes = () => {
-  const navigate = useNavigate();
-  const { isAuthenticated, user, isProfileLoaded, isSyncing, completeOnboarding } = useUser();
-  const [showGiftSuccess, setShowGiftSuccess] = useState(false);
-  const [isProcessingOnboarding, setIsProcessingOnboarding] = useState(false);
-
-  const handleFinishOnboarding = async () => {
-    setIsProcessingOnboarding(true);
-    await completeOnboarding();
-    setIsProcessingOnboarding(false);
-    setShowGiftSuccess(true);
-  };
-
-  if (!isProfileLoaded) return <SplashScreen />;
-
-  // القفل الذهبي: لا تظهر الإشعار إلا إذا تأكدنا 100% أن المستخدم لم يره من قبل في السحابة
-  const shouldShowOnboarding = isAuthenticated && !isSyncing && user.hasSeenOnboarding === false && !showGiftSuccess;
-
-  return (
-    <>
-      {shouldShowOnboarding && (
-        <div className="fixed inset-0 z-[200] bg-slate-950/98 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-500">
-          <div className="glass p-10 rounded-[3rem] text-center max-w-sm border border-blue-500/20 shadow-2xl animate-in zoom-in-95 duration-500">
-            <div className="w-20 h-20 bg-blue-600/10 text-blue-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <ShieldCheck size={48} />
-            </div>
-            <h3 className="text-2xl font-black text-white mb-4">قواعد التعدين</h3>
-            <p className="text-slate-400 text-sm mb-8 font-bold leading-relaxed">
-              أهلاً بك في MineCloud! أنت هنا تمتلك قوة معالجة حقيقية. 
-              تتم إضافة الأرباح لحظياً إلى رصيدك. هل أنت جاهز للبدء؟
-            </p>
-            <button 
-              disabled={isProcessingOnboarding}
-              onClick={handleFinishOnboarding} 
-              className="w-full py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-lg shadow-xl shadow-blue-600/20 active:scale-95 transition-all flex items-center justify-center"
-            >
-              {isProcessingOnboarding ? <Loader2 className="animate-spin" /> : 'جاهز، دعنا نبدأ!'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showGiftSuccess && (
-        <div className="fixed inset-0 z-[300] bg-slate-950/95 backdrop-blur-3xl flex items-center justify-center p-6 animate-in fade-in duration-700">
-          <div className="glass p-10 rounded-[3.5rem] border-2 border-emerald-500/30 shadow-[0_0_50px_rgba(16,185,129,0.2)] max-w-sm w-full text-center relative">
-            <Sparkles className="absolute top-6 right-6 text-amber-400 animate-pulse" size={24} />
-            <div className="w-24 h-24 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-500/20">
-              <Gift size={48} />
-            </div>
-            <h2 className="text-3xl font-black text-white mb-2">هدية الترحيب!</h2>
-            <p className="text-emerald-400 text-sm font-black uppercase tracking-widest mb-8">تم تفعيل جهازك المجاني</p>
-            <div className="bg-slate-900 rounded-3xl p-4 border border-white/5 mb-8">
-               <div className="aspect-video rounded-2xl overflow-hidden mb-4 border border-white/10">
-                  <img src={GIFT_IMAGE} className="w-full h-full object-cover" alt="Turbo S9" />
-               </div>
-               <h4 className="text-white font-black text-sm">Turbo S9 - Welcome Gift</h4>
-               <p className="text-[10px] text-slate-500 font-bold mt-1">يربح 5$ خلال 24 ساعة</p>
-            </div>
-            <button onClick={() => { setShowGiftSuccess(false); navigate('/my-devices'); }} className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-3">
-              بدء التعدين الآن <Rocket size={20} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {isAuthenticated && <AIChatBot />}
-      <Routes>
-        <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
-        <Route path="/auth" element={!isAuthenticated ? <AuthView /> : <Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={isAuthenticated ? <Layout userRole={user.role}><Dashboard /></Layout> : <Navigate to="/auth" replace />} />
-        <Route path="/market" element={isAuthenticated ? <Layout userRole={user.role}><Market /></Layout> : <Navigate to="/auth" replace />} />
-        <Route path="/my-devices" element={isAuthenticated ? <Layout userRole={user.role}><MyDevices /></Layout> : <Navigate to="/auth" replace />} />
-        <Route path="/chat" element={isAuthenticated ? <Layout userRole={user.role}><ChatRoom /></Layout> : <Navigate to="/auth" replace />} />
-        <Route path="/wallet" element={isAuthenticated ? <Layout userRole={user.role}><Wallet /></Layout> : <Navigate to="/auth" replace />} />
-        <Route path="/transactions" element={isAuthenticated ? <Layout userRole={user.role}><Transactions /></Layout> : <Navigate to="/auth" replace />} />
-        <Route path="/referrals" element={isAuthenticated ? <Layout userRole={user.role}><Referrals /></Layout> : <Navigate to="/auth" replace />} />
-        <Route path="/support" element={isAuthenticated ? <Layout userRole={user.role}><Support /></Layout> : <Navigate to="/auth" replace />} />
-        <Route path="/settings" element={isAuthenticated ? <Layout userRole={user.role}><Settings /></Layout> : <Navigate to="/auth" replace />} />
-        <Route path="/notifications" element={isAuthenticated ? <Layout userRole={user.role}><Notifications /></Layout> : <Navigate to="/auth" replace />} />
-        <Route path="/about" element={isAuthenticated ? <Layout userRole={user.role}><About /></Layout> : <Navigate to="/auth" replace />} />
-        <Route path="/privacy" element={isAuthenticated ? <Layout userRole={user.role}><Privacy /></Layout> : <Navigate to="/auth" replace />} />
-        {isAuthenticated && user.role === 'ADMIN' && <Route path="/admin" element={<Layout userRole={user.role}><Admin /></Layout>} />}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </>
   );
 };
 
