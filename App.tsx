@@ -19,7 +19,7 @@ import Privacy from './views/Privacy';
 import AIChatBot from './components/AIChatBot';
 import { UserProvider, useUser } from './UserContext';
 import { LanguageProvider, useLanguage } from './LanguageContext';
-import { Loader2, AlertCircle, Eye, EyeOff, ArrowRight, Zap, TrendingUp, FileText, UserCircle, ShieldCheck, Lock, Mail, KeyRound, CheckCircle2, RefreshCcw, Gift, Star, Sparkles, UserPlus, Rocket, Info, Cpu, Wifi, WifiOff, HelpCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Eye, EyeOff, ArrowRight, Zap, TrendingUp, FileText, UserCircle, ShieldCheck, Lock, Mail, KeyRound, CheckCircle2, RefreshCcw, Gift, Star, Sparkles, UserPlus, Rocket, Info, Cpu, Wifi, WifiOff, HelpCircle, Database, ChevronLeft, Copy, Terminal } from 'lucide-react';
 
 const LOGO_URL = "https://c.top4top.io/p_3676pdlj43.jpg";
 
@@ -47,8 +47,14 @@ const AuthView = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [showKeyInfo, setShowKeyInfo] = useState(false);
+  const [showSqlFix, setShowSqlFix] = useState(false);
+  const [copied, setCopied] = useState(false);
   const { login, register, isCloudConnected } = useUser();
+
+  const SQL_CODE = `ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE global_chat DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE profiles TO anon, authenticated, service_role;
+GRANT ALL ON TABLE global_chat TO anon, authenticated, service_role;`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); 
@@ -78,18 +84,29 @@ const AuthView = () => {
       if (result.success) { 
         navigate('/dashboard', { replace: true }); 
       } else { 
-        setError(result.error || 'خطأ غير متوقع في البيانات'); 
+        const errMsg = result.error || 'خطأ غير متوقع';
+        setError(errMsg);
+        if (errMsg.toLowerCase().includes('row-level security') || errMsg.toLowerCase().includes('violates') || errMsg.toLowerCase().includes('permission')) {
+          setShowSqlFix(true);
+        }
       }
     } catch (err: any) {
-      setError("خطأ تقني: تأكد من تفعيل الجداول في Supabase عبر SQL Editor.");
+      setError("خطأ في الاتصال بقاعدة البيانات.");
     } finally {
       setIsLoading(false);
     }
   };
 
+  const copySql = () => {
+    navigator.clipboard.writeText(SQL_CODE);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const toggleMode = () => {
     setAuthMode(authMode === 'login' ? 'register' : 'login');
     setError(null);
+    setShowSqlFix(false);
     setPassword('');
     setConfirmPassword('');
   };
@@ -97,8 +114,6 @@ const AuthView = () => {
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-slate-950 font-cairo text-right">
       <div className="glass w-full max-w-md p-8 md:p-10 rounded-[2.5rem] space-y-8 relative z-10 shadow-2xl border border-white/5 animate-in zoom-in-95 duration-500">
-        
-        {/* مؤشر حالة الاتصال العلوي */}
         <div className="absolute top-6 left-8 flex items-center gap-2">
           <div className={`w-3 h-3 rounded-full ${isCloudConnected ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-rose-500 shadow-[0_0_10px_#f43f5e] animate-pulse'}`}></div>
           <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
@@ -117,16 +132,19 @@ const AuthView = () => {
         </div>
 
         {error && (
-          <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl text-rose-400 text-xs font-bold animate-shake flex items-start gap-3">
-             <AlertCircle size={18} className="shrink-0" /> 
-             <div className="flex flex-col gap-1">
-                <span>{error}</span>
-                {!isCloudConnected && (
-                  <button onClick={() => setShowKeyInfo(true)} className="text-[10px] text-blue-400 underline mt-1 flex items-center gap-1">
-                    <HelpCircle size={10} /> كيف أقوم بربط السحابة؟
-                  </button>
-                )}
+          <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl text-rose-400 text-xs font-bold animate-shake flex flex-col gap-3">
+             <div className="flex items-start gap-3">
+                <AlertCircle size={18} className="shrink-0" /> 
+                <div className="flex flex-col gap-1">
+                  <span>{error}</span>
+                </div>
              </div>
+             {(showSqlFix || error.includes('violates')) && (
+               <button onClick={() => setShowSqlFix(true)} className="bg-white/10 p-3 rounded-xl text-[10px] text-white flex items-center justify-between border border-white/10 hover:bg-white/20 transition-all">
+                  <span>اضغط هنا لمعرفة كيفية الإصلاح 🛠️</span>
+                  <Database size={12} />
+               </button>
+             )}
           </div>
         )}
 
@@ -154,9 +172,6 @@ const AuthView = () => {
                 <ShieldCheck className={`absolute right-4 top-1/2 -translate-y-1/2 transition-colors ${confirmPassword && password === confirmPassword ? 'text-emerald-500' : 'text-slate-600'}`} size={18} />
                 <input required type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="أعد كتابة الكلمة" className={`w-full bg-slate-900/50 border p-4 pr-12 rounded-2xl text-white outline-none text-right transition-all ${confirmPassword && password !== confirmPassword ? 'border-rose-500/50 focus:border-rose-500' : 'border-slate-800 focus:border-blue-500'}`} />
               </div>
-              {confirmPassword && password !== confirmPassword && (
-                <p className="text-[9px] text-rose-500 font-bold mr-2 mt-1">الكلمتان غير متطابقتين</p>
-              )}
             </div>
           )}
           
@@ -171,21 +186,44 @@ const AuthView = () => {
           </button>
         </div>
 
-        {/* مودال شرح الربط */}
-        {showKeyInfo && (
+        {showSqlFix && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-xl animate-in fade-in">
-            <div className="glass max-w-sm w-full p-8 rounded-[2.5rem] border border-blue-500/30 text-center">
-              <Info className="text-blue-500 mx-auto mb-4" size={48} />
-              <h3 className="text-xl font-black text-white mb-4">خطوات ربط السحابة</h3>
-              <div className="text-right space-y-4 mb-8">
-                <p className="text-xs text-slate-400 font-bold leading-relaxed">
-                  1. اذهب لـ <span className="text-white">Netlify Dashboard</span>.<br/>
-                  2. ادخل لـ <span className="text-white">Site Configuration</span> ثم <span className="text-white">Environment variables</span>.<br/>
-                  3. أضف <span className="text-blue-400">SUPABASE_URL</span> و <span className="text-blue-400">SUPABASE_ANON_KEY</span>.<br/>
-                  4. اذهب لـ <span className="text-white">Deploys</span> واضغط <span className="text-white">Clear cache and deploy site</span>.
-                </p>
+            <div className="glass max-w-md w-full p-8 rounded-[2.5rem] border border-blue-500/30 overflow-y-auto max-h-[90vh] custom-scrollbar">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-3 bg-blue-600/10 text-blue-500 rounded-xl"><Database size={24} /></div>
+                <h3 className="text-xl font-black text-white">خطوات تفعيل الصلاحيات</h3>
               </div>
-              <button onClick={() => setShowKeyInfo(false)} className="w-full py-4 bg-slate-800 text-white rounded-2xl font-black">فهمت ذلك</button>
+              <div className="space-y-6 text-right mb-8">
+                <div className="bg-slate-900/50 p-4 rounded-2xl border border-white/5">
+                  <p className="text-xs text-white font-black mb-2 flex items-center gap-2">
+                    <span className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center text-[10px]">1</span>
+                    ابحث عن أيقونة SQL Editor
+                  </p>
+                  <p className="text-[10px] text-slate-400 mr-7 font-bold">موجودة في القائمة اليسرى السوداء في Supabase، شكلها يشبه <Terminal size={12} className="inline mx-1 text-blue-400" /> واسمها "SQL Editor".</p>
+                </div>
+                <div className="bg-slate-900/50 p-4 rounded-2xl border border-white/5">
+                  <p className="text-xs text-white font-black mb-2 flex items-center gap-2">
+                    <span className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center text-[10px]">2</span>
+                    أنشئ استعلام جديد (New Query)
+                  </p>
+                  <p className="text-[10px] text-slate-400 mr-7 font-bold">في الصفحة التي فتحت، اضغط على البطاقة الكبيرة التي تحمل علامة <span className="text-white">+</span> أو كلمة **"New query"** في الأعلى.</p>
+                </div>
+                <div className="bg-slate-900/50 p-4 rounded-2xl border border-white/5">
+                  <p className="text-xs text-white font-black mb-2 flex items-center gap-2">
+                    <span className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center text-[10px]">3</span>
+                    انسخ الكود بالأسفل واضغط Run
+                  </p>
+                  <div className="relative mt-3">
+                    <pre className="bg-black/50 p-4 rounded-xl font-mono text-[9px] text-blue-400 border border-white/5 break-all whitespace-pre-wrap text-left">
+                      {SQL_CODE}
+                    </pre>
+                    <button onClick={copySql} className={`absolute top-2 right-2 p-2 rounded-lg transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white'}`}>
+                      {copied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setShowSqlFix(false)} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">فهمت، سأقوم بالتنفيذ الآن</button>
             </div>
           </div>
         )}
@@ -195,11 +233,31 @@ const AuthView = () => {
 };
 
 const AppRoutes = () => {
-  const { isAuthenticated, user, isProfileLoaded } = useUser();
+  const { isAuthenticated, user, isProfileLoaded, completeOnboarding } = useUser();
   if (!isProfileLoaded) return <SplashScreen />;
   return (
     <>
-      {isAuthenticated && user.hasSeenOnboarding === false && <div className="fixed inset-0 z-[200] bg-slate-950/98 flex items-center justify-center p-4"><div className="glass p-10 rounded-[3rem] text-center max-w-sm"><h3 className="text-2xl font-black text-white mb-4">قواعد التعدين</h3><p className="text-slate-400 text-sm mb-8 font-bold leading-relaxed">أهلاً بك! في MineCloud أنت تشتري أجهزة حقيقية. الأرباح تضاف لحظياً. هل أنت جاهز؟</p><button onClick={() => window.location.reload()} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">موافق</button></div></div>}
+      {isAuthenticated && user.hasSeenOnboarding === false && (
+        <div className="fixed inset-0 z-[200] bg-slate-950/98 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-500">
+          <div className="glass p-10 rounded-[3rem] text-center max-w-sm border border-blue-500/20 shadow-2xl animate-in zoom-in-95 duration-500">
+            <div className="w-20 h-20 bg-blue-600/10 text-blue-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <ShieldCheck size={48} />
+            </div>
+            <h3 className="text-2xl font-black text-white mb-4">قواعد التعدين</h3>
+            <p className="text-slate-400 text-sm mb-8 font-bold leading-relaxed">
+              أهلاً بك في MineCloud! أنت هنا تمتلك قوة معالجة حقيقية. 
+              تتم إضافة الأرباح لحظياً إلى رصيدك. 
+              يرجى التأكد من الحفاظ على كود المزامنة الخاص بك. هل أنت جاهز للبدء؟
+            </p>
+            <button 
+              onClick={() => completeOnboarding()} 
+              className="w-full py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-lg shadow-xl shadow-blue-600/20 active:scale-95 transition-all"
+            >
+              جاهز، دعنا نبدأ!
+            </button>
+          </div>
+        </div>
+      )}
       {isAuthenticated && <AIChatBot />}
       <Routes>
         <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
