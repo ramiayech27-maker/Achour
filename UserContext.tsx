@@ -157,6 +157,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           currency: 'USDT', 
           txHash: hash 
         };
+        // التأكد من أن المصفوفة موجودة ومحدثة
         const updatedTransactions = [tx, ...(user.transactions || [])];
         await saveToCloud({ ...user, transactions: updatedTransactions });
       },
@@ -172,7 +173,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           address: addr 
         };
         const updatedTransactions = [tx, ...(user.transactions || [])];
-        // خصم الرصيد فور تقديم الطلب لضمان الجدية
         await saveToCloud({ ...user, balance: user.balance - amount, transactions: updatedTransactions });
         return true;
       },
@@ -204,7 +204,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           let found = false;
           d.transactions = d.transactions.map((tx:any) => {
             if (tx.id === txid && tx.status === TransactionStatus.PENDING) {
-              // إذا كان سحب وتم رفضه، نعيد المال للرصيد
               if (tx.type === TransactionType.WITHDRAWAL) d.balance += tx.amount;
               found = true;
               return { ...tx, status: TransactionStatus.REJECTED };
