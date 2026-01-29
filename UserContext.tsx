@@ -23,6 +23,8 @@ interface UserContextType {
   withdrawFunds: (amount: number, address: string) => Promise<boolean>;
   approveTransaction: (targetUserId: string, txId: string) => Promise<void>;
   rejectTransaction: (targetUserId: string, txId: string) => Promise<void>;
+  updateUserRole: (targetUserId: string, newRole: 'USER' | 'ADMIN') => Promise<void>;
+  deleteChatMessage: (messageId: string) => Promise<void>;
   addNotification: (title: string, message: string, type: NotificationType) => void;
   markChatAsRead: () => void;
   resetSystem: () => void;
@@ -53,7 +55,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     setUser(updatedUser);
     if (supabase && updatedUser.email && updatedUser.email !== '') {
       try {
-        // Only saving the data blob, not modifying role/is_admin from client side
         const { error } = await supabase.from('profiles').upsert(
           { email: updatedUser.email.toLowerCase(), data: updatedUser },
           { onConflict: 'email' }
@@ -74,8 +75,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           const { data, error } = await supabase.from('profiles').select('*').eq('email', savedEmail.toLowerCase()).maybeSingle();
           if (data && !error) {
             let userData = data.data;
-            // Strict enforce admin role from database columns
-            if (data.is_admin === true || data.role === 'admin') {
+            if (data.is_admin === true || data.role === 'admin' || data.role === 'ADMIN') {
               userData.role = 'ADMIN';
             } else {
               userData.role = 'USER';
@@ -99,20 +99,15 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         setIsSyncing(true);
         const normalizedEmail = email.toLowerCase().trim();
         if (!supabase) return { success: false, error: 'Cloud disconnected.' };
-        
         const { data, error } = await supabase.from('profiles').select('*').eq('email', normalizedEmail).maybeSingle();
-        
         if (data && data.data.password === pass) {
           localStorage.setItem(AUTH_KEY, normalizedEmail);
           let userData = data.data;
-          
-          // Strict enforce admin role from database columns
-          if (data.is_admin === true || data.role === 'admin') {
+          if (data.is_admin === true || data.role === 'admin' || data.role === 'ADMIN') {
             userData.role = 'ADMIN';
           } else {
             userData.role = 'USER';
           }
-
           setUser(userData);
           setIsAuthenticated(true);
           setIsSyncing(false);
@@ -132,7 +127,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
           transactions: [], activePackages: [], notifications: []
         };
-        // Initial registration is always USER
         await supabase.from('profiles').insert({ email: normalizedEmail, data: newUser, role: 'user', is_admin: false });
         localStorage.setItem(AUTH_KEY, normalizedEmail);
         setUser(newUser);
@@ -154,47 +148,22 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         const updated = { 
           ...user, 
           activePackages: (user.activePackages || []).map(p => 
-            p.instanceId === id ? { 
-              ...p, 
-              status: DeviceStatus.RUNNING, 
-              lastActivationDate: Date.now(), 
-              expiryDate: Date.now() + (days * 86400000), 
-              currentDurationDays: days, 
-              currentDailyRate: rate 
-            } : p
+            p.instanceId === id ? { ...p, status: DeviceStatus.RUNNING, lastActivationDate: Date.now(), expiryDate: Date.now() + (days * 86400000), currentDurationDays: days, currentDailyRate: rate } : p
           ) 
         };
         await saveToCloud(updated);
         return true;
       },
       depositFunds: async (amount, method, hash) => {
-        const tx: Transaction = { 
-          id: `DEP-${Date.now()}`, 
-          amount, 
-          type: TransactionType.DEPOSIT, 
-          status: TransactionStatus.PENDING, 
-          date: new Date().toISOString(), 
-          currency: 'USDT', 
-          txHash: hash 
-        };
+        const tx: Transaction = { id: `DEP-${Date.now()}`, amount, type: TransactionType.DEPOSIT, status: TransactionStatus.PENDING, date: new Date().toISOString(), currency: 'USDT', txHash: hash };
         const currentTxs = Array.isArray(user.transactions) ? user.transactions : [];
-        const updatedTransactions = [tx, ...currentTxs];
-        await saveToCloud({ ...user, transactions: updatedTransactions });
+        await saveToCloud({ ...user, transactions: [tx, ...currentTxs] });
       },
       withdrawFunds: async (amount, addr) => {
         if (user.balance < amount) return false;
-        const tx: Transaction = { 
-          id: `WDR-${Date.now()}`, 
-          amount, 
-          type: TransactionType.WITHDRAWAL, 
-          status: TransactionStatus.PENDING, 
-          date: new Date().toISOString(), 
-          currency: 'USDT', 
-          address: addr 
-        };
+        const tx: Transaction = { id: `WDR-${Date.now()}`, amount, type: TransactionType.WITHDRAWAL, status: TransactionStatus.PENDING, date: new Date().toISOString(), currency: 'USDT', address: addr };
         const currentTxs = Array.isArray(user.transactions) ? user.transactions : [];
-        const updatedTransactions = [tx, ...currentTxs];
-        await saveToCloud({ ...user, balance: user.balance - amount, transactions: updatedTransactions });
+        await saveToCloud({ ...user, balance: user.balance - amount, transactions: [tx, ...currentTxs] });
         return true;
       },
       approveTransaction: async (uid, txid) => {
@@ -236,6 +205,15 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
             if (user.id === uid) setUser(d);
           }
         }
+      },
+      updateUserRole: async (uid, role) => {
+        if (!supabase) return;
+        const is_admin = role === 'ADMIN';
+        await supabase.from('profiles').update({ role: role.toLowerCase(), is_admin }).eq('data->>id', uid);
+      },
+      deleteChatMessage: async (mid) => {
+        if (!supabase) return;
+        await supabase.from('global_chat').delete().eq('id', mid);
       },
       addNotification: (title, message, type) => {
         const n = { id: `N-${Date.now()}`, title, message, type, date: new Date().toISOString(), isRead: false };

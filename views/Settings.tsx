@@ -3,16 +3,15 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ArrowRight, ArrowLeft, ShieldCheck, Copy, CheckCircle2, 
-  Bell, Globe, Shield, AlertTriangle, Key, Terminal, 
-  Cloud, Sparkles, Monitor, Database, ShieldAlert, Lock
+  Cloud, AlertTriangle, ShieldAlert
 } from 'lucide-react';
 import { useLanguage } from '../LanguageContext';
 import { useUser } from '../UserContext';
 
 const Settings = () => {
   const navigate = useNavigate();
-  const { language, setLanguage, t, isRtl } = useLanguage();
-  const { user, exportAccount, resetSystem, requestNotificationPermission, confirmRecoveryKeySaved, addNotification } = useUser();
+  const { t, isRtl } = useLanguage();
+  const { user, exportAccount, resetSystem, confirmRecoveryKeySaved } = useUser();
   
   const [copiedSync, setCopiedSync] = useState(false);
   const [syncCode, setSyncCode] = useState('');
@@ -118,7 +117,7 @@ const Settings = () => {
                 <h3 className="font-black">{isRtl ? 'أمان فائق' : 'Security'}</h3>
              </div>
              <p className="text-xs text-slate-500 font-bold leading-relaxed">
-               {isRtl ? "بياناتك مشفرة ومخزنة في السحابة بناءً على رتبة حسابك الحقيقية." : "Data is encrypted and stored in the cloud based on your real role."}
+               {isRtl ? "يتم التحقق من صلاحيات الإدارة تلقائياً من قاعدة البيانات السحابية. لا توجد مفاتيح محلية مخزنة." : "Admin permissions are automatically verified from the cloud database. No local keys stored."}
              </p>
           </div>
         </aside>
