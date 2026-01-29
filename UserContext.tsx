@@ -31,17 +31,13 @@ interface UserContextType {
   confirmRecoveryKeySaved: () => void;
   autoPilotMode: boolean;
   toggleAutoPilot: () => void;
-  requestNotificationPermission: () => Promise<boolean>;
   exportAccount: () => string;
   markNotificationsAsRead: () => void;
   clearNotifications: () => void;
-  checkEmailExists: (email: string) => Promise<{ exists: boolean }>;
-  resetPassword: (email: string, newPassword: string) => Promise<{ success: boolean, error?: string }>;
   latestNotification: AppNotification | null;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
-const AUTH_KEY = 'minecloud_session_v_final'; 
 
 export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -51,14 +47,41 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
   const [autoPilotMode, setAutoPilotMode] = useState(false);
   const [latestNotification, setLatestNotification] = useState<AppNotification | null>(null);
 
+  const syncProfileWithAuth = async (authId: string) => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authId)
+        .maybeSingle();
+
+      if (data && !error) {
+        let userData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+        
+        // التحقق الصارم من الرتبة من الأعمدة المستقلة
+        const isAdmin = data.is_admin === true || data.role?.toLowerCase() === 'admin';
+        userData.role = isAdmin ? 'ADMIN' : 'USER';
+        userData.is_admin = isAdmin;
+        userData.id = authId; // ضمان تطابق الـ ID
+
+        setUser(userData);
+        setIsAuthenticated(true);
+        return isAdmin;
+      }
+    } catch (e) {
+      console.error("Profile Sync Error:", e);
+    }
+    return false;
+  };
+
   const saveToCloud = async (updatedUser: User) => {
     setUser(updatedUser);
-    if (supabase && updatedUser.email && updatedUser.email !== '') {
+    if (supabase && updatedUser.id) {
       try {
-        const { error } = await supabase.from('profiles').upsert(
-          { email: updatedUser.email.toLowerCase(), data: updatedUser },
-          { onConflict: 'email' }
-        );
+        const { error } = await supabase.from('profiles').update({
+          data: updatedUser
+        }).eq('id', updatedUser.id);
         if (error) throw error;
       } catch (e) { 
         console.error("Cloud Save Failed:", e); 
@@ -68,22 +91,11 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     const restoreSession = async () => {
-      const savedEmail = localStorage.getItem(AUTH_KEY);
-      if (savedEmail && supabase) {
-        setIsSyncing(true);
-        try {
-          const { data, error } = await supabase.from('profiles').select('*').eq('email', savedEmail.toLowerCase()).maybeSingle();
-          if (data && !error) {
-            let userData = data.data;
-            // AUTHORITATIVE ROLE CHECK: Profiles table columns override JSON blob
-            const isAdmin = data.is_admin === true || data.role?.toLowerCase() === 'admin';
-            userData.role = isAdmin ? 'ADMIN' : 'USER';
-            userData.is_admin = isAdmin;
-
-            setUser(userData);
-            setIsAuthenticated(true);
-          }
-        } catch (e) { console.error("Restore Session Failed:", e); }
+      if (supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await syncProfileWithAuth(session.user.id);
+        }
       }
       setIsSyncing(false);
       setIsProfileLoaded(true);
@@ -95,48 +107,68 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     <UserContext.Provider value={{
       user, isAuthenticated, isSyncing, isProfileLoaded, isCloudConnected: !!supabase,
       latestNotification,
-      login: async (email, pass) => {
+      login: async (email, password) => {
         setIsSyncing(true);
-        const normalizedEmail = email.toLowerCase().trim();
         if (!supabase) return { success: false, error: 'Cloud disconnected.' };
         
-        const { data, error } = await supabase.from('profiles').select('*').eq('email', normalizedEmail).maybeSingle();
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password: password || '' });
         
-        if (data && data.data.password === pass) {
-          localStorage.setItem(AUTH_KEY, normalizedEmail);
-          let userData = data.data;
-          
-          const isAdmin = data.is_admin === true || data.role?.toLowerCase() === 'admin';
-          userData.role = isAdmin ? 'ADMIN' : 'USER';
-          userData.is_admin = isAdmin;
+        if (error) {
+          setIsSyncing(false);
+          return { success: false, error: 'خطأ في بيانات الدخول.' };
+        }
 
-          setUser(userData);
-          setIsAuthenticated(true);
+        if (data.user) {
+          const isAdmin = await syncProfileWithAuth(data.user.id);
           setIsSyncing(false);
           return { success: true, isAdmin };
         }
+
         setIsSyncing(false);
-        return { success: false, error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' };
+        return { success: false };
       },
-      register: async (email, pass) => {
+      register: async (email, password) => {
         setIsSyncing(true);
-        const normalizedEmail = email.toLowerCase().trim();
         if (!supabase) return { success: false, error: 'Cloud disconnected.' };
-        const { data: existing } = await supabase.from('profiles').select('email').eq('email', normalizedEmail).maybeSingle();
-        if (existing) { setIsSyncing(false); return { success: false, error: 'هذا البريد مسجل مسبقاً.' }; }
-        const newUser = { 
-          ...INITIAL_USER, id: `U-${Date.now()}`, email: normalizedEmail, password: pass, 
-          referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
-          transactions: [], activePackages: [], notifications: []
-        };
-        await supabase.from('profiles').insert({ email: normalizedEmail, data: newUser, role: 'user', is_admin: false });
-        localStorage.setItem(AUTH_KEY, normalizedEmail);
-        setUser(newUser);
-        setIsAuthenticated(true);
+        
+        const { data, error } = await supabase.auth.signUp({ email, password: password || '' });
+        
+        if (error) {
+          setIsSyncing(false);
+          return { success: false, error: error.message };
+        }
+
+        if (data.user) {
+          const newUser = { 
+            ...INITIAL_USER, 
+            id: data.user.id, 
+            email: email.toLowerCase(), 
+            referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
+            transactions: [], activePackages: [], notifications: []
+          };
+          
+          await supabase.from('profiles').insert({ 
+            id: data.user.id, 
+            email: email.toLowerCase(), 
+            data: newUser, 
+            role: 'user', 
+            is_admin: false 
+          });
+
+          setUser(newUser);
+          setIsAuthenticated(true);
+          setIsSyncing(false);
+          return { success: true };
+        }
+
         setIsSyncing(false);
-        return { success: true };
+        return { success: false };
       },
-      logout: () => { localStorage.removeItem(AUTH_KEY); setIsAuthenticated(false); setUser(INITIAL_USER); },
+      logout: async () => { 
+        if(supabase) await supabase.auth.signOut();
+        setIsAuthenticated(false); 
+        setUser(INITIAL_USER); 
+      },
       purchaseDevice: async (pkg) => {
         if (user.balance < pkg.price) return false;
         const newPkg: UserPackage = { 
@@ -170,9 +202,9 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       },
       approveTransaction: async (uid, txid) => {
         if (!supabase) return;
-        const { data } = await supabase.from('profiles').select('*').eq('data->>id', uid).maybeSingle();
+        const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
         if (data) {
-          const d = data.data;
+          const d = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
           let found = false;
           d.transactions = (d.transactions || []).map((tx:any) => {
             if (tx.id === txid && tx.status === TransactionStatus.PENDING) {
@@ -183,16 +215,16 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
             return tx;
           });
           if (found) {
-            await supabase.from('profiles').update({ data: d }).eq('email', d.email.toLowerCase());
+            await supabase.from('profiles').update({ data: d }).eq('id', uid);
             if (user.id === uid) setUser(d);
           }
         }
       },
       rejectTransaction: async (uid, txid) => {
         if (!supabase) return;
-        const { data } = await supabase.from('profiles').select('*').eq('data->>id', uid).maybeSingle();
+        const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
         if (data) {
-          const d = data.data;
+          const d = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
           let found = false;
           d.transactions = (d.transactions || []).map((tx:any) => {
             if (tx.id === txid && tx.status === TransactionStatus.PENDING) {
@@ -203,7 +235,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
             return tx;
           });
           if (found) {
-            await supabase.from('profiles').update({ data: d }).eq('email', d.email.toLowerCase());
+            await supabase.from('profiles').update({ data: d }).eq('id', uid);
             if (user.id === uid) setUser(d);
           }
         }
@@ -211,8 +243,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       updateUserRole: async (uid, role) => {
         if (!supabase) return;
         const isAdmin = role === 'ADMIN';
-        // Update both is_admin boolean and role text for redundancy
-        await supabase.from('profiles').update({ role: role.toLowerCase(), is_admin: isAdmin }).eq('data->>id', uid);
+        await supabase.from('profiles').update({ role: role.toLowerCase(), is_admin: isAdmin }).eq('id', uid);
       },
       deleteChatMessage: async (mid) => {
         if (!supabase) return;
@@ -225,26 +256,10 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         setTimeout(() => setLatestNotification(null), 5000);
       },
       markChatAsRead: () => setUser(p => ({ ...p, lastSeenChatTime: Date.now() })),
-      resetPassword: async (e, p) => {
-        if (!supabase) return { success: false };
-        const { data } = await supabase.from('profiles').select('data').eq('email', e.toLowerCase()).maybeSingle();
-        if (data) {
-          const d = { ...data.data, password: p };
-          await supabase.from('profiles').update({ data: d }).eq('email', e.toLowerCase());
-          return { success: true };
-        }
-        return { success: false };
-      },
-      checkEmailExists: async (e) => {
-        if (!supabase) return { exists: false };
-        const { data } = await supabase.from('profiles').select('email').eq('email', e.toLowerCase()).maybeSingle();
-        return { exists: !!data };
-      },
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
       autoPilotMode,
       toggleAutoPilot: () => setAutoPilotMode(!autoPilotMode),
-      requestNotificationPermission: async () => true,
       exportAccount: () => { try { return btoa(JSON.stringify(user)); } catch (e) { return ""; } },
       markNotificationsAsRead: () => setUser(p => ({ ...p, notifications: (p.notifications || []).map(n => ({ ...n, isRead: true })) })),
       clearNotifications: () => setUser(p => ({ ...p, notifications: [] }))

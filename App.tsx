@@ -19,7 +19,7 @@ import Privacy from './views/Privacy';
 import AIChatBot from './components/AIChatBot';
 import { UserProvider, useUser } from './UserContext';
 import { LanguageProvider } from './LanguageContext';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Bug } from 'lucide-react';
 
 const LOGO_URL = "https://c.top4top.io/p_3676pdlj43.jpg";
 
@@ -39,15 +39,27 @@ const SplashScreen = () => (
   </div>
 );
 
+const DebugOverlay = () => {
+  const { user, isAuthenticated } = useUser();
+  if (!isAuthenticated) return null;
+  return (
+    <div className="fixed bottom-4 left-4 z-[9999] glass p-3 rounded-xl border border-blue-500/30 text-[10px] font-mono text-blue-400 flex items-center gap-2 pointer-events-none">
+      <Bug size={14} />
+      <span>Role: {user.role} | is_admin: {String(user.is_admin)}</span>
+    </div>
+  );
+};
+
 const AppRoutes = () => {
   const { isAuthenticated, isProfileLoaded, user } = useUser();
   if (!isProfileLoaded) return <SplashScreen />;
 
-  const isAdmin = user.role === 'ADMIN';
+  const isAdmin = user.is_admin === true || user.role?.toLowerCase() === 'admin';
 
   return (
     <>
       {isAuthenticated && <AIChatBot />}
+      <DebugOverlay />
       <Routes>
         <Route path="/" element={isAuthenticated ? (isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />) : <Landing />} />
         <Route path="/auth" element={!isAuthenticated ? <AuthView /> : (isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />)} />
@@ -98,7 +110,11 @@ const AuthView = () => {
         else navigate('/dashboard', { replace: true }); 
       }
       else setError(result.error || 'فشل تسجيل الدخول');
-    } catch (err: any) { setError("خطأ في الاتصال."); } finally { setIsLoading(false); }
+    } catch (err: any) { 
+      setError(err.message || "خطأ في الاتصال."); 
+    } finally { 
+      setIsLoading(false); 
+    }
   };
 
   return (
