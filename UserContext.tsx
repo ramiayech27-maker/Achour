@@ -14,7 +14,7 @@ interface UserContextType {
   isSyncing: boolean;
   isProfileLoaded: boolean;
   isCloudConnected: boolean;
-  login: (email: string, password?: string) => Promise<{ success: boolean, error?: string }>;
+  login: (email: string, password?: string) => Promise<{ success: boolean, isAdmin?: boolean, error?: string }>;
   register: (email: string, password?: string) => Promise<{ success: boolean, error?: string }>;
   logout: () => void;
   purchaseDevice: (pkg: MiningPackage) => Promise<boolean>;
@@ -75,11 +75,11 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           const { data, error } = await supabase.from('profiles').select('*').eq('email', savedEmail.toLowerCase()).maybeSingle();
           if (data && !error) {
             let userData = data.data;
-            if (data.is_admin === true || data.role === 'admin' || data.role === 'ADMIN') {
-              userData.role = 'ADMIN';
-            } else {
-              userData.role = 'USER';
-            }
+            // AUTHORITATIVE ROLE CHECK: Profiles table columns override JSON blob
+            const isAdmin = data.is_admin === true || data.role?.toLowerCase() === 'admin';
+            userData.role = isAdmin ? 'ADMIN' : 'USER';
+            userData.is_admin = isAdmin;
+
             setUser(userData);
             setIsAuthenticated(true);
           }
@@ -99,29 +99,31 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         setIsSyncing(true);
         const normalizedEmail = email.toLowerCase().trim();
         if (!supabase) return { success: false, error: 'Cloud disconnected.' };
+        
         const { data, error } = await supabase.from('profiles').select('*').eq('email', normalizedEmail).maybeSingle();
+        
         if (data && data.data.password === pass) {
           localStorage.setItem(AUTH_KEY, normalizedEmail);
           let userData = data.data;
-          if (data.is_admin === true || data.role === 'admin' || data.role === 'ADMIN') {
-            userData.role = 'ADMIN';
-          } else {
-            userData.role = 'USER';
-          }
+          
+          const isAdmin = data.is_admin === true || data.role?.toLowerCase() === 'admin';
+          userData.role = isAdmin ? 'ADMIN' : 'USER';
+          userData.is_admin = isAdmin;
+
           setUser(userData);
           setIsAuthenticated(true);
           setIsSyncing(false);
-          return { success: true };
+          return { success: true, isAdmin };
         }
         setIsSyncing(false);
-        return { success: false, error: 'Invalid credentials.' };
+        return { success: false, error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' };
       },
       register: async (email, pass) => {
         setIsSyncing(true);
         const normalizedEmail = email.toLowerCase().trim();
         if (!supabase) return { success: false, error: 'Cloud disconnected.' };
         const { data: existing } = await supabase.from('profiles').select('email').eq('email', normalizedEmail).maybeSingle();
-        if (existing) { setIsSyncing(false); return { success: false, error: 'Email already exists.' }; }
+        if (existing) { setIsSyncing(false); return { success: false, error: 'هذا البريد مسجل مسبقاً.' }; }
         const newUser = { 
           ...INITIAL_USER, id: `U-${Date.now()}`, email: normalizedEmail, password: pass, 
           referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
@@ -168,7 +170,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       },
       approveTransaction: async (uid, txid) => {
         if (!supabase) return;
-        const { data } = await supabase.from('profiles').select('data').eq('data->>id', uid).maybeSingle();
+        const { data } = await supabase.from('profiles').select('*').eq('data->>id', uid).maybeSingle();
         if (data) {
           const d = data.data;
           let found = false;
@@ -188,7 +190,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       },
       rejectTransaction: async (uid, txid) => {
         if (!supabase) return;
-        const { data } = await supabase.from('profiles').select('data').eq('data->>id', uid).maybeSingle();
+        const { data } = await supabase.from('profiles').select('*').eq('data->>id', uid).maybeSingle();
         if (data) {
           const d = data.data;
           let found = false;
@@ -208,8 +210,9 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       },
       updateUserRole: async (uid, role) => {
         if (!supabase) return;
-        const is_admin = role === 'ADMIN';
-        await supabase.from('profiles').update({ role: role.toLowerCase(), is_admin }).eq('data->>id', uid);
+        const isAdmin = role === 'ADMIN';
+        // Update both is_admin boolean and role text for redundancy
+        await supabase.from('profiles').update({ role: role.toLowerCase(), is_admin: isAdmin }).eq('data->>id', uid);
       },
       deleteChatMessage: async (mid) => {
         if (!supabase) return;

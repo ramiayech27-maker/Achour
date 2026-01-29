@@ -43,12 +43,16 @@ const AppRoutes = () => {
   const { isAuthenticated, isProfileLoaded, user } = useUser();
   if (!isProfileLoaded) return <SplashScreen />;
 
+  const isAdmin = user.role === 'ADMIN';
+
   return (
     <>
       {isAuthenticated && <AIChatBot />}
       <Routes>
-        <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
-        <Route path="/auth" element={!isAuthenticated ? <AuthView /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/" element={isAuthenticated ? (isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />) : <Landing />} />
+        <Route path="/auth" element={!isAuthenticated ? <AuthView /> : (isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />)} />
+        
+        {/* User Routes */}
         <Route path="/dashboard" element={isAuthenticated ? <Layout userRole={user.role}><Dashboard /></Layout> : <Navigate to="/auth" replace />} />
         <Route path="/market" element={isAuthenticated ? <Layout userRole={user.role}><Market /></Layout> : <Navigate to="/auth" replace />} />
         <Route path="/my-devices" element={isAuthenticated ? <Layout userRole={user.role}><MyDevices /></Layout> : <Navigate to="/auth" replace />} />
@@ -61,7 +65,10 @@ const AppRoutes = () => {
         <Route path="/notifications" element={isAuthenticated ? <Layout userRole={user.role}><Notifications /></Layout> : <Navigate to="/auth" replace />} />
         <Route path="/about" element={isAuthenticated ? <Layout userRole={user.role}><About /></Layout> : <Navigate to="/auth" replace />} />
         <Route path="/privacy" element={isAuthenticated ? <Layout userRole={user.role}><Privacy /></Layout> : <Navigate to="/auth" replace />} />
-        {isAuthenticated && user.role === 'ADMIN' && <Route path="/admin" element={<Layout userRole={user.role}><Admin /></Layout>} />}
+        
+        {/* Strictly Protected Admin Route */}
+        <Route path="/admin" element={isAuthenticated && isAdmin ? <Layout userRole={user.role}><Admin /></Layout> : <Navigate to="/dashboard" replace />} />
+        
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
@@ -82,13 +89,16 @@ const AuthView = () => {
     e.preventDefault(); 
     setError(null); 
     if (!isCloudConnected) { setError("Cloud disconnected!"); return; }
-    if (authMode === 'register' && password !== confirmPassword) { setError("Passwords do not match."); return; }
+    if (authMode === 'register' && password !== confirmPassword) { setError("كلمات المرور غير متطابقة."); return; }
     setIsLoading(true);
     try {
       const result = authMode === 'register' ? await register(email, password) : await login(email, password);
-      if (result.success) navigate('/dashboard', { replace: true }); 
-      else setError(result.error || 'Unexpected error');
-    } catch (err: any) { setError("Connection error."); } finally { setIsLoading(false); }
+      if (result.success) {
+        if (result.isAdmin) navigate('/admin', { replace: true });
+        else navigate('/dashboard', { replace: true }); 
+      }
+      else setError(result.error || 'فشل تسجيل الدخول');
+    } catch (err: any) { setError("خطأ في الاتصال."); } finally { setIsLoading(false); }
   };
 
   return (
