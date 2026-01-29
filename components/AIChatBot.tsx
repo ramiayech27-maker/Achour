@@ -1,10 +1,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, X, MessageSquare, Loader2, Sparkles, User, Minimize2, AlertCircle, ShieldAlert } from 'lucide-react';
+import { Bot, Send, MessageSquare, Loader2, Minimize2 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { useUser } from '../UserContext';
 import { useLanguage } from '../LanguageContext';
-import { MINIMUM_WITHDRAWAL_AMOUNT, MINIMUM_DEPOSIT_AMOUNT, MINING_PACKAGES } from '../constants';
+import { MINIMUM_WITHDRAWAL_AMOUNT, MINIMUM_DEPOSIT_AMOUNT } from '../constants';
 
 const AIChatBot = () => {
   const { user } = useUser();
@@ -14,8 +14,8 @@ const AIChatBot = () => {
     { 
       id: '1', 
       text: isRtl 
-        ? 'أهلاً بك في MineCloud! أنا مساعدك الذكي. يمكنني مساعدتك في معرفة أرباحك، طريقة السحب، أو شرح باقات التعدين. كيف يمكنني خدمتك؟' 
-        : 'Welcome to MineCloud! I am your AI assistant. I can help with earnings, withdrawals, or mining packages. How can I help?', 
+        ? 'أهلاً بك في MineCloud! أنا مساعدك الذكي. كيف يمكنني خدمتك اليوم بخصوص التعدين أو المحفظة؟' 
+        : 'Welcome to MineCloud! I am your AI assistant. How can I help you today regarding mining or your wallet?', 
       sender: 'bot' 
     }
   ]);
@@ -40,28 +40,23 @@ const AIChatBot = () => {
 
     try {
       const apiKey = process.env.API_KEY;
-      
-      if (!apiKey || apiKey === "undefined" || apiKey === "") {
-        throw new Error("Missing Key");
-      }
+      if (!apiKey) throw new Error("Missing Key");
 
       const ai = new GoogleGenAI({ apiKey });
-      const activeDevices = user.activePackages.map(p => `${p.name} (${p.status})`).join(', ');
+      const activeDevices = user.activePackages.map(p => `${p.name}`).join(', ');
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [{ role: 'user', parts: [{ text: userText }] }],
         config: {
           systemInstruction: `
-            أنت "MineCloud AI"، المساعد الرسمي لمنصة MineCloud.
+            أنت "MineCloud AI". مساعد منصة التعدين السحابي.
             بيانات المستخدم:
             - الرصيد: $${user.balance.toFixed(2)}
-            - الأرباح: $${user.totalEarnings.toFixed(2)}
-            - الأجهزة: ${activeDevices || 'لا يوجد'}
-            القواعد:
-            1. الرد بالعربية بلهجة احترافية ومطمئنة.
-            2. الحد الأدنى للسحب هو $${MINIMUM_WITHDRAWAL_AMOUNT}.
-            3. الحد الأدنى للإيداع هو $${MINIMUM_DEPOSIT_AMOUNT}.
+            - الأجهزة الحالية: ${activeDevices || 'لا يوجد'}
+            - الحد الأدنى للسحب: $${MINIMUM_WITHDRAWAL_AMOUNT}
+            - الحد الأدنى للإيداع: $${MINIMUM_DEPOSIT_AMOUNT}
+            تنبيه: لا تعرض أي هدايا مجانية. المنصة تعتمد على شراء الأجهزة الحقيقية.
           `
         }
       });
@@ -69,11 +64,7 @@ const AIChatBot = () => {
       const botText = response.text || (isRtl ? 'عذراً، لم أستطع معالجة طلبك الآن.' : 'Sorry, I could not process your request.');
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), text: botText, sender: 'bot' }]);
     } catch (error: any) {
-      const errorMsg = error.message === "Missing Key" 
-        ? (isRtl ? "تنبيه: لم يتم تفعيل الذكاء الاصطناعي بعد (مفتاح API مفقود في إعدادات Netlify)." : "AI Key not configured.")
-        : (isRtl ? "عذراً، واجهت مشكلة في الاتصال بمحرك الذكاء الاصطناعي." : "AI error.");
-      
-      setMessages(prev => [...prev, { id: Date.now().toString(), text: errorMsg, sender: 'bot' }]);
+      setMessages(prev => [...prev, { id: Date.now().toString(), text: "عذراً، حدث خطأ في النظام.", sender: 'bot' }]);
     } finally {
       setIsLoading(false);
     }
@@ -84,9 +75,8 @@ const AIChatBot = () => {
       {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)}
-          className="w-16 h-16 bg-blue-600 hover:bg-blue-500 text-white rounded-full shadow-[0_0_30px_rgba(37,99,235,0.4)] flex items-center justify-center transition-all hover:scale-110 active:scale-90 group relative"
+          className="w-16 h-16 bg-blue-600 hover:bg-blue-500 text-white rounded-full shadow-[0_0_30px_rgba(37,99,235,0.4)] flex items-center justify-center transition-all hover:scale-110 active:scale-90 relative"
         >
-          <div className="absolute inset-0 rounded-full border-2 border-blue-400/50 animate-ping opacity-20"></div>
           <Bot size={30} />
           <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-4 border-slate-950"></div>
         </button>

@@ -2,15 +2,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Cpu, Zap, ArrowRight, ArrowLeft,
-  Loader2, TrendingUp, Clock
+  Cpu, Zap, ArrowRight,
+  Loader2, TrendingUp
 } from 'lucide-react';
 import { useUser } from '../UserContext';
 import { useLanguage } from '../LanguageContext';
 import { UserPackage, DeviceStatus } from '../types';
 
 const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
-  const navigate = useNavigate();
   const { activateCycle } = useUser();
   const { isRtl } = useLanguage();
   const [timeLeft, setTimeLeft] = useState("");
@@ -19,16 +18,13 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
   const [activating, setActivating] = useState(false);
   const [now, setNow] = useState(Date.now());
   
-  const isGift = pkg.instanceId.includes('GIFT');
-
   const currentEarnings = useMemo(() => {
     if (pkg.status !== DeviceStatus.RUNNING || !pkg.lastActivationDate) return 0;
-    const pps = isGift 
-      ? (5 / 86400) 
-      : ((pkg.priceAtPurchase * (pkg.currentDailyRate || 0) / 100) / 86400);
+    // حساب الأرباح بناءً على السعر الحقيقي عند الشراء ونسبة الربح المختارة
+    const pps = ((pkg.priceAtPurchase * (pkg.currentDailyRate || 0) / 100) / 86400);
     const elapsedSeconds = (now - pkg.lastActivationDate) / 1000;
     return elapsedSeconds * pps;
-  }, [pkg, now, isGift]);
+  }, [pkg, now]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -43,7 +39,6 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
         } else {
           const hours = Math.floor(remaining / (1000 * 60 * 60));
           const mins = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-          const secs = Math.floor((remaining % (1000 * 60)) / 1000);
           setTimeLeft(`${hours}h ${mins}m`);
           setProgress(((total - remaining) / total) * 100);
         }
@@ -64,7 +59,6 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
       onClick={() => pkg.status === DeviceStatus.IDLE && setShowActivateModal(true)}
       className={`group cursor-pointer flex flex-col bg-slate-900/40 rounded-2xl overflow-hidden transition-all active:scale-95 border border-white/5 hover:border-blue-500/30 shadow-md ${pkg.status === DeviceStatus.RUNNING ? 'ring-1 ring-blue-500/30' : ''}`}
     >
-      {/* Image Container - Square & Compact */}
       <div className="relative w-full aspect-square bg-black overflow-hidden">
         <img 
           src={pkg.icon} 
@@ -79,7 +73,7 @@ const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
         )}
 
         <div className="absolute top-1 right-1 bg-black/60 backdrop-blur-md px-1 py-0.5 rounded-md border border-white/5">
-           <p className="text-[7px] text-white font-black uppercase tracking-tighter">{isGift ? (isRtl ? 'هدية' : 'Gift') : (isRtl ? 'بريميوم' : 'Pro')}</p>
+           <p className="text-[7px] text-white font-black uppercase tracking-tighter">{isRtl ? 'بريميوم' : 'Pro'}</p>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { INITIAL_USER } from './constants';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabaseConfig';
@@ -18,7 +18,6 @@ interface UserContextType {
   register: (email: string, password?: string) => Promise<{ success: boolean, error?: string }>;
   logout: () => void;
   purchaseDevice: (pkg: MiningPackage) => Promise<boolean>;
-  claimWelcomeGift: () => Promise<boolean>; 
   activateCycle: (instanceId: string, days: number, rate: number) => Promise<boolean>;
   depositFunds: (amount: number, method: 'crypto', txHash?: string) => Promise<void>;
   withdrawFunds: (amount: number, address: string) => Promise<boolean>;
@@ -28,7 +27,6 @@ interface UserContextType {
   markChatAsRead: () => void;
   toggleRole: () => void;
   resetSystem: () => void;
-  completeOnboarding: () => Promise<boolean>;
   confirmRecoveryKeySaved: () => void;
   autoPilotMode: boolean;
   toggleAutoPilot: () => void;
@@ -42,11 +40,11 @@ interface UserContextType {
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
-const AUTH_KEY = 'minecloud_session_v4'; 
+const AUTH_KEY = 'minecloud_session_v5'; 
 
 export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [user, setUser] = useState<User>(INITIAL_USER);
+  const [user, setUser] = useState<User>({ ...INITIAL_USER, hasSeenOnboarding: true, hasClaimedWelcomeGift: true });
   const [isSyncing, setIsSyncing] = useState(true);
   const [isProfileLoaded, setIsProfileLoaded] = useState(false);
   const [autoPilotMode, setAutoPilotMode] = useState(false);
@@ -56,11 +54,10 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     setUser(updatedUser);
     if (supabase && updatedUser.email && updatedUser.email !== INITIAL_USER.email) {
       try {
-        const { error } = await supabase.from('profiles').upsert(
+        await supabase.from('profiles').upsert(
           { email: updatedUser.email.toLowerCase(), data: updatedUser },
           { onConflict: 'email' }
         );
-        if (error) throw error;
       } catch (e) {
         console.error("Cloud Save Failed:", e);
       }
@@ -128,7 +125,15 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
             setIsSyncing(false);
             return { success: false, error: 'البريد مسجل مسبقاً.' };
           }
-          const newUser = { ...INITIAL_USER, id: `U-${Date.now()}`, email: normalizedEmail, password: pass, referralCode: 'MC-'+Math.floor(1000+Math.random()*9000) };
+          const newUser = { 
+            ...INITIAL_USER, 
+            id: `U-${Date.now()}`, 
+            email: normalizedEmail, 
+            password: pass, 
+            referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
+            hasSeenOnboarding: true,
+            hasClaimedWelcomeGift: true
+          };
           await supabase.from('profiles').insert({ email: normalizedEmail, data: newUser });
           localStorage.setItem(AUTH_KEY, normalizedEmail);
           setUser(newUser);
@@ -147,18 +152,34 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       },
       purchaseDevice: async (pkg) => {
         if (user.balance < pkg.price) return false;
-        const newPkg: UserPackage = { instanceId: `D-${Date.now()}`, packageId: pkg.id, name: pkg.name, priceAtPurchase: pkg.price, status: DeviceStatus.IDLE, purchaseDate: Date.now(), isClaimed: true, icon: pkg.icon, dailyProfit: (pkg.price * pkg.dailyProfitPercent)/100 };
+        const newPkg: UserPackage = { 
+          instanceId: `D-${Date.now()}`, 
+          packageId: pkg.id, 
+          name: pkg.name, 
+          priceAtPurchase: pkg.price, 
+          status: DeviceStatus.IDLE, 
+          purchaseDate: Date.now(), 
+          isClaimed: true, 
+          icon: pkg.icon, 
+          dailyProfit: (pkg.price * pkg.dailyProfitPercent)/100 
+        };
         await saveToCloud({ ...user, balance: user.balance - pkg.price, activePackages: [newPkg, ...user.activePackages] });
         return true;
       },
-      claimWelcomeGift: async () => {
-        if (user.hasClaimedWelcomeGift) return false;
-        const gift: UserPackage = { instanceId: `GIFT-${user.id}-${Date.now()}`, packageId: 'gift', name: 'Turbo S9 - Welcome Gift', priceAtPurchase: 5, status: DeviceStatus.RUNNING, purchaseDate: Date.now(), lastActivationDate: Date.now(), expiryDate: Date.now() + 86400000, currentDurationDays: 1, currentDailyRate: 100, isClaimed: true, icon: 'https://j.top4top.io/p_3669iibh30.jpg', dailyProfit: 5 };
-        await saveToCloud({ ...user, hasClaimedWelcomeGift: true, activePackages: [gift, ...user.activePackages] });
-        return true;
-      },
       activateCycle: async (id, days, rate) => {
-        const updated = { ...user, activePackages: user.activePackages.map(p => p.instanceId === id ? { ...p, status: DeviceStatus.RUNNING, lastActivationDate: Date.now(), expiryDate: Date.now()+(days*86400000), currentDurationDays: days, currentDailyRate: rate } : p) };
+        const updated = { 
+          ...user, 
+          activePackages: user.activePackages.map(p => 
+            p.instanceId === id ? { 
+              ...p, 
+              status: DeviceStatus.RUNNING, 
+              lastActivationDate: Date.now(), 
+              expiryDate: Date.now()+(days*86400000), 
+              currentDurationDays: days, 
+              currentDailyRate: rate 
+            } : p
+          ) 
+        };
         await saveToCloud(updated);
         return true;
       },
@@ -228,38 +249,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       },
       toggleRole: () => setUser(p => ({ ...p, role: p.role === 'ADMIN' ? 'USER' : 'ADMIN' })),
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
-      completeOnboarding: async () => {
-        setIsSyncing(true);
-        const giftId = `GIFT-USER-${user.id}`;
-        const gift: UserPackage = { 
-          instanceId: giftId, 
-          packageId: 'gift', 
-          name: 'Turbo S9 - Welcome Gift', 
-          priceAtPurchase: 5, 
-          status: DeviceStatus.RUNNING, 
-          purchaseDate: Date.now(), 
-          lastActivationDate: Date.now(), 
-          expiryDate: Date.now() + 86400000, 
-          currentDurationDays: 1, 
-          currentDailyRate: 100, 
-          isClaimed: true, 
-          icon: 'https://j.top4top.io/p_3669iibh30.jpg', 
-          dailyProfit: 5 
-        };
-
-        const finalUser = { 
-          ...user, 
-          hasSeenOnboarding: true,
-          hasClaimedWelcomeGift: true,
-          activePackages: [gift, ...user.activePackages.filter(p => p.instanceId !== giftId)]
-        };
-
-        // استخدام saveToCloud الموحد لضمان الحفظ السحابي
-        await saveToCloud(finalUser);
-        
-        setIsSyncing(false);
-        return true; 
-      },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
       autoPilotMode,
       toggleAutoPilot: () => setAutoPilotMode(!autoPilotMode),
