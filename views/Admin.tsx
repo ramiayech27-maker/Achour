@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  ShieldCheck, RefreshCw, Users, DollarSign, ExternalLink, Clock, AlertTriangle, CheckCircle2, Search, Wifi, WifiOff, Database, Eye, EyeOff, Activity, Globe, Server, UserCheck, ShieldAlert
+  ShieldCheck, RefreshCw, Users, DollarSign, ExternalLink, Clock, AlertTriangle, CheckCircle2, Search, Wifi, WifiOff, Database, Eye, EyeOff, Activity, Globe, Server, UserCheck, ShieldAlert, BarChart3, ListFilter
 } from 'lucide-react';
 import { useUser } from '../UserContext';
 import { TransactionType, TransactionStatus, User } from '../types';
@@ -28,19 +28,22 @@ const Admin = () => {
     setIsRefreshing(true);
     setConnectionError(null);
     try {
-      // جلب كافة السجلات من جدول profiles
       const { data, error } = await supabase.from('profiles').select('*');
       if (error) {
-        setConnectionError(`خطأ RLS أو اتصال: ${error.message}`);
+        setConnectionError(`خطأ في جلب البيانات: ${error.message}`);
         throw error;
       }
       if (data) {
-        // تحويل البيانات من JSONB إلى كائنات User
-        const users = data.map(row => row.data).filter(u => u !== null && u.id);
+        // نضمن أننا نستخرج كائن 'data' ونقوم بتنظيفه
+        const users = data.map(row => {
+          const u = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+          return u;
+        }).filter(u => u !== null && u.id);
         setRegisteredUsers(users);
       }
     } catch (e: any) {
       console.error("Admin Load Error:", e);
+      setConnectionError("فشل في معالجة البيانات المستلمة.");
     } finally {
       setIsRefreshing(false);
     }
@@ -48,20 +51,41 @@ const Admin = () => {
 
   useEffect(() => {
     loadAllData();
-    const interval = setInterval(loadAllData, 10000); 
+    const interval = setInterval(loadAllData, 15000); 
     return () => clearInterval(interval);
   }, []);
+
+  // حساب كافة العمليات (وليس المعلقة فقط) للتشخيص
+  const stats = useMemo(() => {
+    let pending = 0;
+    let total = 0;
+    let completed = 0;
+    let rejected = 0;
+    let usersWithTx = 0;
+
+    registeredUsers.forEach(u => {
+      const txs = u.transactions || [];
+      if (txs.length > 0) usersWithTx++;
+      txs.forEach((t: any) => {
+        total++;
+        if (t.status === TransactionStatus.PENDING) pending++;
+        if (t.status === TransactionStatus.COMPLETED) completed++;
+        if (t.status === TransactionStatus.REJECTED) rejected++;
+      });
+    });
+
+    return { pending, total, completed, rejected, usersWithTx };
+  }, [registeredUsers]);
 
   const allPending = useMemo(() => {
     const list: any[] = [];
     registeredUsers.forEach(u => {
-      if (u && u.transactions && Array.isArray(u.transactions)) {
-        u.transactions.forEach(t => {
-          if (t.status === TransactionStatus.PENDING) {
-            list.push({ ...t, userId: u.id, userEmail: u.email });
-          }
-        });
-      }
+      const txs = u.transactions || [];
+      txs.forEach((t: any) => {
+        if (t.status === TransactionStatus.PENDING) {
+          list.push({ ...t, userId: u.id, userEmail: u.email });
+        }
+      });
     });
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [registeredUsers]);
@@ -79,8 +103,9 @@ const Admin = () => {
   };
 
   const createTestTransaction = async () => {
-     if(confirm("سيتم إرسال طلب إيداع وهمي بـ $50 من حسابك الحالي لاختبار القائمة. هل تستمر؟")) {
-        await depositFunds(50, 'crypto', 'TEST-HASH-' + Date.now());
+     if(confirm("سيتم إرسال طلب إيداع تجريبي بـ $50 لاختبار ظهور العمليات. هل تستمر؟")) {
+        await depositFunds(50, 'crypto', 'AUTO-TEST-' + Math.random().toString(36).substring(7));
+        alert("تم إرسال العملية! انتظر ثانيتين ثم اضغط على زر التحديث الدائري.");
         setTimeout(loadAllData, 2000);
      }
   };
@@ -88,22 +113,23 @@ const Admin = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 font-cairo pb-20 text-right" dir="rtl">
       
-      {/* Top Status Bar */}
-      <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 ${connectionError ? 'bg-rose-600/10 border-rose-500/30 text-rose-500' : 'bg-emerald-600/10 border-emerald-500/30 text-emerald-500'}`}>
+      {/* Quick Info Bar */}
+      <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 ${connectionError ? 'bg-rose-600/10 border-rose-500/30 text-rose-500' : 'bg-blue-600/10 border-blue-500/30 text-blue-400'}`}>
          <div className="flex items-center gap-3">
-            <Wifi size={18} className={isRefreshing ? 'animate-pulse' : ''} />
+            <Activity size={18} className={isRefreshing ? 'animate-spin' : ''} />
             <span className="text-[10px] font-black uppercase tracking-wider">
-              {connectionError ? 'خطأ في جلب البيانات' : `قاعدة البيانات نشطة | تم العثور على ${registeredUsers.length} مستخدم`}
+              {connectionError ? connectionError : `الحالة: متصل | المستخدمين: ${registeredUsers.length} | إجمالي العمليات: ${stats.total}`}
             </span>
          </div>
          <div className="flex gap-2">
-            <button onClick={createTestTransaction} className="bg-amber-500 text-slate-950 px-3 py-1 rounded-lg text-[10px] font-black hover:bg-amber-400 transition-all">إرسال عملية تجريبية 🧪</button>
-            <button onClick={() => setShowRawData(!showRawData)} className="bg-white/5 px-3 py-1 rounded-lg text-[10px] font-black hover:bg-white/10 transition-all">البيانات الخام</button>
+            <button onClick={createTestTransaction} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-[10px] font-black hover:bg-blue-500 transition-all">إرسال تجربة 🧪</button>
+            <button onClick={() => setShowRawData(!showRawData)} className="bg-white/5 px-3 py-1 rounded-lg text-[10px] font-black hover:bg-white/10 transition-all">Debug</button>
          </div>
       </div>
 
       {showRawData && (
         <div className="glass p-6 rounded-[2rem] border border-blue-500/30 bg-black/90 animate-in slide-in-from-top-2 overflow-hidden">
+           <h3 className="text-xs font-black text-blue-500 mb-2">بيانات المستخدمين الخام:</h3>
            <pre className="text-[9px] font-mono text-left dir-ltr p-4 bg-slate-900 rounded-xl max-h-60 overflow-y-auto custom-scrollbar">
               {JSON.stringify(registeredUsers, null, 2)}
            </pre>
@@ -130,10 +156,30 @@ const Admin = () => {
         </div>
       </header>
 
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+         <div className="glass p-5 rounded-3xl border border-white/5 bg-blue-600/5">
+            <p className="text-[9px] text-slate-500 font-black mb-1">العمليات المعلقة</p>
+            <p className="text-2xl font-black text-white">{stats.pending}</p>
+         </div>
+         <div className="glass p-5 rounded-3xl border border-white/5">
+            <p className="text-[9px] text-slate-500 font-black mb-1">مستخدمون نشطون</p>
+            <p className="text-2xl font-black text-white">{stats.usersWithTx}</p>
+         </div>
+         <div className="glass p-5 rounded-3xl border border-white/5 bg-emerald-600/5">
+            <p className="text-[9px] text-slate-500 font-black mb-1">عمليات مكتملة</p>
+            <p className="text-2xl font-black text-emerald-500">{stats.completed}</p>
+         </div>
+         <div className="glass p-5 rounded-3xl border border-white/5 bg-rose-600/5">
+            <p className="text-[9px] text-slate-500 font-black mb-1">عمليات مرفوضة</p>
+            <p className="text-2xl font-black text-rose-500">{stats.rejected}</p>
+         </div>
+      </div>
+
       {/* Tabs Menu */}
       <div className="flex glass p-1.5 rounded-[1.5rem] border border-white/5 max-w-lg mx-auto overflow-hidden shadow-2xl">
          <button onClick={() => setActiveTab('transactions')} className={`flex-1 py-4 rounded-xl font-black transition-all ${activeTab === 'transactions' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>
-            العمليات المعلقة ({allPending.length})
+            المعلقة ({allPending.length})
          </button>
          <button onClick={() => setActiveTab('users')} className={`flex-1 py-4 rounded-xl font-black transition-all ${activeTab === 'users' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>
             المستخدمين ({registeredUsers.length})
@@ -142,7 +188,7 @@ const Admin = () => {
       </div>
 
       {activeTab === 'transactions' && (
-        <section className="space-y-6">
+        <section className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
           {allPending.map(tx => (
             <div key={tx.id} className="glass p-8 rounded-[3rem] border-r-[12px] border-r-blue-600 border border-white/5 flex flex-col md:flex-row justify-between items-center gap-8 bg-gradient-to-br from-slate-900/60 to-slate-950/60 shadow-2xl">
                <div className="flex items-center gap-6 w-full md:w-auto">
@@ -152,6 +198,11 @@ const Admin = () => {
                  <div className="flex-1">
                     <p className="text-white text-lg font-black">{tx.userEmail}</p>
                     <p className="text-[10px] text-slate-500 font-black uppercase mt-1">{tx.type} • {new Date(tx.date).toLocaleString('ar-EG')}</p>
+                    {tx.txHash && (
+                      <div className="mt-2 text-[9px] text-blue-400 font-mono bg-blue-400/5 px-2 py-1 rounded border border-blue-400/10 truncate max-w-[200px] ltr">
+                        {tx.txHash}
+                      </div>
+                    )}
                  </div>
                </div>
                <div className="text-center md:text-right">
@@ -168,28 +219,31 @@ const Admin = () => {
             <div className="py-40 flex flex-col items-center glass rounded-[4rem] border-dashed border-2 border-slate-800 opacity-40">
                <CheckCircle2 size={72} className="text-slate-700 mb-8" />
                <p className="text-2xl font-black text-white">لا توجد طلبات معلقة</p>
-               <p className="text-sm text-slate-500 font-bold mt-2">جرب الضغط على "إرسال عملية تجريبية" لاختبار الربط.</p>
+               <p className="text-sm text-slate-500 font-bold mt-2 text-center max-w-xs">إذا قمت بإرسال تجربة، اضغط على زر التحديث في أعلى اليسار.</p>
             </div>
           )}
         </section>
       )}
 
       {activeTab === 'users' && (
-        <div className="grid gap-4">
+        <div className="grid gap-4 animate-in fade-in">
            {registeredUsers.map(u => (
-              <div key={u.id} className="glass p-6 rounded-3xl border border-white/5 flex items-center justify-between">
+              <div key={u.id} className="glass p-6 rounded-3xl border border-white/5 flex items-center justify-between hover:border-blue-500/30 transition-all">
                  <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center text-blue-500">
                        <UserCheck size={24} />
                     </div>
                     <div>
                        <p className="text-white font-black text-sm">{u.email}</p>
-                       <p className="text-[10px] text-slate-500 font-bold uppercase">الرصيد: ${u.balance.toFixed(2)} | العمليات: {u.transactions?.length || 0}</p>
+                       <p className="text-[10px] text-slate-500 font-bold uppercase">الرصيد: ${u.balance.toFixed(2)} | إجمالي العمليات: {u.transactions?.length || 0}</p>
                     </div>
                  </div>
-                 <div className="flex items-center gap-2">
-                    {u.role === 'ADMIN' && <span className="bg-blue-600 text-white text-[8px] font-black px-2 py-1 rounded-md">ADMIN</span>}
-                    <span className="text-[10px] text-slate-400 font-mono">{u.id}</span>
+                 <div className="flex items-center gap-4">
+                    <div className="flex flex-col items-end">
+                       <span className={`text-[9px] font-black px-2 py-1 rounded-md ${u.role === 'ADMIN' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                          {u.role}
+                       </span>
+                    </div>
                  </div>
               </div>
            ))}
@@ -197,16 +251,27 @@ const Admin = () => {
       )}
 
       {activeTab === 'diagnostic' && (
-        <section className="glass rounded-[3rem] p-10 border border-white/5 space-y-8 bg-slate-900/40">
-           <h2 className="text-2xl font-black text-white flex items-center gap-3"><Server className="text-blue-500"/> تشخيص النظام</h2>
-           <div className="p-6 bg-slate-950 rounded-2xl border border-white/5">
-              <p className="text-xs text-slate-500 font-black mb-2 uppercase tracking-widest">معلومات الاتصال الحالية:</p>
-              <p className="text-blue-400 font-mono text-xs ltr break-all">{SUPABASE_URL}</p>
+        <section className="glass rounded-[3rem] p-10 border border-white/5 space-y-8 bg-slate-900/40 animate-in fade-in">
+           <h2 className="text-2xl font-black text-white flex items-center gap-3"><Server className="text-blue-500"/> تشخيص الربط بالسحابة</h2>
+           
+           <div className="grid md:grid-cols-2 gap-6">
+              <div className="p-6 bg-slate-950 rounded-2xl border border-white/5">
+                 <p className="text-xs text-slate-500 font-black mb-2 uppercase tracking-widest">SUPABASE_URL المستخدم حالياً:</p>
+                 <p className="text-blue-400 font-mono text-[10px] ltr break-all">{SUPABASE_URL}</p>
+              </div>
+              <div className="p-6 bg-slate-950 rounded-2xl border border-white/5">
+                 <p className="text-xs text-slate-500 font-black mb-2 uppercase tracking-widest">إحصائيات قاعدة البيانات:</p>
+                 <p className="text-emerald-400 font-black text-sm">المستخدمين المكتشفين: {registeredUsers.length}</p>
+                 <p className="text-blue-400 font-black text-sm mt-1">العمليات المخزنة: {stats.total}</p>
+              </div>
            </div>
+
            <div className="p-8 bg-amber-500/5 border border-amber-500/20 rounded-3xl space-y-4">
-              <h3 className="font-black text-white flex items-center gap-2"><ShieldAlert size={18}/> تنبيه تقني هام</h3>
+              <h3 className="font-black text-white flex items-center gap-2"><ShieldAlert size={18}/> تنبيه تقني نهائي</h3>
               <p className="text-sm text-slate-400 font-bold leading-relaxed">
-                 بما أنك قمت بتعطيل <b>RLS</b> (الزر الأحمر في صورتك)، فإن أي عملية إيداع يقوم بها أي مستخدم يجب أن تظهر هنا فوراً. إذا لم تظهر، فهذا يعني أن المستخدمين لم يرسلوا أي طلبات بعد (يجب عليهم الضغط على "تأكيد الإيداع" في صفحة المحفظة).
+                 إذا كان عدد المستخدمين هو 9 ولكن العمليات "0"، فهذا يعني أن ملفات المستخدمين في قاعدة البيانات لا تحتوي على مصفوفة <b>transactions</b>. 
+                 <br/><br/>
+                 <b>الحل:</b> قم بتسجيل الخروج والدخول بحسابك، اذهب للمحفظة، أرسل طلب إيداع، واضغط "تأكيد". ستظهر فوراً هنا.
               </p>
            </div>
         </section>
