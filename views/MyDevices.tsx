@@ -1,10 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Cpu, Zap, ArrowRight,
-  Loader2, TrendingUp
-} from 'lucide-react';
+import { Cpu, Zap, ArrowRight, Loader2, TrendingUp, Play, CheckCircle2, Clock } from 'lucide-react';
 import { useUser } from '../UserContext';
 import { useLanguage } from '../LanguageContext';
 import { UserPackage, DeviceStatus } from '../types';
@@ -12,139 +9,85 @@ import { UserPackage, DeviceStatus } from '../types';
 const DeviceCard: React.FC<{ pkg: UserPackage }> = ({ pkg }) => {
   const { activateCycle } = useUser();
   const { isRtl } = useLanguage();
-  const [timeLeft, setTimeLeft] = useState("");
-  const [progress, setProgress] = useState(0);
-  const [showActivateModal, setShowActivateModal] = useState(false);
-  const [activating, setActivating] = useState(false);
   const [now, setNow] = useState(Date.now());
-  
-  const currentEarnings = useMemo(() => {
-    if (pkg.status !== DeviceStatus.RUNNING || !pkg.lastActivationDate) return 0;
-    // حساب الأرباح بناءً على السعر الحقيقي عند الشراء ونسبة الربح المختارة
-    const pps = ((pkg.priceAtPurchase * (pkg.currentDailyRate || 0) / 100) / 86400);
-    const elapsedSeconds = (now - pkg.lastActivationDate) / 1000;
-    return elapsedSeconds * pps;
-  }, [pkg, now]);
+  const [isActivating, setIsActivating] = useState(false);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const currentTime = Date.now();
-      setNow(currentTime);
-      if (pkg.status === DeviceStatus.RUNNING && pkg.expiryDate && pkg.lastActivationDate) {
-        const total = pkg.expiryDate - pkg.lastActivationDate;
-        const remaining = pkg.expiryDate - currentTime;
-        if (remaining <= 0) {
-          setTimeLeft(isRtl ? "مكتمل" : "Completed");
-          setProgress(100);
-        } else {
-          const hours = Math.floor(remaining / (1000 * 60 * 60));
-          const mins = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-          setTimeLeft(`${hours}h ${mins}m`);
-          setProgress(((total - remaining) / total) * 100);
-        }
-      }
-    }, 1000);
+    const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
-  }, [pkg, isRtl]);
+  }, []);
 
-  const handleStart = async (days: number, rate: number) => {
-    setActivating(true);
-    await activateCycle(pkg.instanceId, days, rate);
-    setActivating(false);
-    setShowActivateModal(false);
+  const { progress, timeLeft, earned } = useMemo(() => {
+    if (pkg.status !== DeviceStatus.RUNNING || !pkg.lastActivationDate || !pkg.expiryDate) {
+      return { progress: 0, timeLeft: "--:--", earned: 0 };
+    }
+    const total = pkg.expiryDate - pkg.lastActivationDate;
+    const elapsed = now - pkg.lastActivationDate;
+    const remaining = pkg.expiryDate - now;
+    
+    const pps = ((pkg.priceAtPurchase * (pkg.currentDailyRate || 2.5) / 100) / 86400000);
+    const earnedVal = Math.max(0, elapsed * pps);
+    
+    if (remaining <= 0) return { progress: 100, timeLeft: isRtl ? "مكتمل" : "Ended", earned: earnedVal };
+    
+    const h = Math.floor(remaining / 3600000);
+    const m = Math.floor((remaining % 3600000) / 60000);
+    return { progress: Math.min(100, (elapsed / total) * 100), timeLeft: `${h}h ${m}m`, earned: earnedVal };
+  }, [pkg, now, isRtl]);
+
+  const handleActivate = async () => {
+    setIsActivating(true);
+    // تفعيل تلقائي لأفضل دورة (3 أيام بربح 2.5%) لتبسيط التجربة
+    await activateCycle(pkg.instanceId, 3, 2.5);
+    setIsActivating(false);
   };
 
   return (
-    <div 
-      onClick={() => pkg.status === DeviceStatus.IDLE && setShowActivateModal(true)}
-      className={`group cursor-pointer flex flex-col bg-slate-900/40 rounded-2xl overflow-hidden transition-all active:scale-95 border border-white/5 hover:border-blue-500/30 shadow-md ${pkg.status === DeviceStatus.RUNNING ? 'ring-1 ring-blue-500/30' : ''}`}
-    >
-      <div className="relative w-full aspect-square bg-black overflow-hidden">
-        <img 
-          src={pkg.icon} 
-          alt={pkg.name} 
-          className={`w-full h-full object-cover transition-opacity duration-700 ${pkg.status === DeviceStatus.RUNNING ? 'opacity-100 scale-105' : 'opacity-40'}`} 
-        />
-        
-        {pkg.status === DeviceStatus.RUNNING && (
-          <div className="absolute inset-0 bg-blue-600/5 flex items-center justify-center">
-            <div className="w-5 h-5 border-2 border-blue-500/10 border-t-blue-500 rounded-full animate-spin"></div>
+    <div className={`glass relative overflow-hidden rounded-[2rem] border transition-all duration-500 ${pkg.status === DeviceStatus.RUNNING ? 'border-blue-500/40 bg-blue-500/5 shadow-lg shadow-blue-500/10' : 'border-white/5 hover:border-slate-700'}`}>
+      <div className="p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`p-3 rounded-2xl ${pkg.status === DeviceStatus.RUNNING ? 'bg-blue-600 text-white animate-pulse' : 'bg-slate-800 text-slate-500'}`}>
+              <Cpu size={20} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-white">{pkg.name}</h3>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{isRtl ? 'جهاز تعدين سحابي' : 'Cloud Miner'}</p>
+            </div>
           </div>
-        )}
-
-        <div className="absolute top-1 right-1 bg-black/60 backdrop-blur-md px-1 py-0.5 rounded-md border border-white/5">
-           <p className="text-[7px] text-white font-black uppercase tracking-tighter">{isRtl ? 'بريميوم' : 'Pro'}</p>
-        </div>
-      </div>
-
-      <div className="p-2 space-y-1">
-        <div className="text-center">
-          <h3 className="text-white font-bold text-[8px] truncate leading-tight px-0.5">{pkg.name.split(' - ')[0]}</h3>
-          <p className={`font-black text-[6px] uppercase tracking-tighter mt-0.5 ${pkg.status === DeviceStatus.RUNNING ? 'text-emerald-400' : 'text-slate-500'}`}>
-            {pkg.status === DeviceStatus.RUNNING ? (isRtl ? 'نشط' : 'Active') : (isRtl ? 'جاهز' : 'Idle')}
-          </p>
+          <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter ${pkg.status === DeviceStatus.RUNNING ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
+            {pkg.status === DeviceStatus.RUNNING ? (isRtl ? 'يعمل الآن' : 'Running') : (isRtl ? 'جاهز' : 'Standby')}
+          </div>
         </div>
 
-        {pkg.status === DeviceStatus.RUNNING && (
-          <div className="bg-black/40 p-1 rounded-lg border border-white/5 text-center">
-             <span className="text-emerald-400 font-black text-[8px] tabular-nums tracking-tighter block">
-               +${currentEarnings.toFixed(3)}
-             </span>
-             <div className="w-full h-0.5 bg-slate-800 rounded-full overflow-hidden mt-1 mx-auto">
-                <div className="h-full bg-blue-500 transition-all duration-1000 shadow-[0_0_5px_rgba(59,130,246,0.5)]" style={{ width: `${progress}%` }}></div>
-             </div>
-             <p className="text-[6px] text-slate-500 font-bold mt-0.5">{timeLeft}</p>
+        {pkg.status === DeviceStatus.RUNNING ? (
+          <div className="space-y-3 pt-2">
+            <div className="flex justify-between items-end">
+              <div>
+                <p className="text-[10px] text-slate-500 font-black mb-0.5 uppercase">{isRtl ? 'الأرباح المجمعة' : 'Accumulated'}</p>
+                <p className="text-xl font-black text-emerald-400 font-mono tracking-tighter animate-pulse">${earned.toFixed(4)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[9px] text-slate-500 font-bold uppercase">{isRtl ? 'الوقت المتبقي' : 'Time Left'}</p>
+                <p className="text-xs font-black text-white font-mono">{timeLeft}</p>
+              </div>
+            </div>
+            <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden border border-white/5">
+              <div className="h-full bg-blue-500 transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(59,130,246,0.5)]" style={{ width: `${progress}%` }}></div>
+            </div>
           </div>
-        )}
-
-        {pkg.status === DeviceStatus.IDLE && (
-          <div className="pt-0.5">
-             <div className="w-full py-1 bg-blue-600 text-white rounded-lg text-center font-black text-[8px] uppercase shadow-lg shadow-blue-600/10">
-               {isRtl ? 'تفعيل' : 'Start'}
-             </div>
+        ) : (
+          <div className="pt-2">
+            <button 
+              onClick={handleActivate}
+              disabled={isActivating}
+              className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-sm transition-all active:scale-95 flex items-center justify-center gap-2 shadow-xl shadow-blue-600/20"
+            >
+              {isActivating ? <Loader2 className="animate-spin" size={18} /> : <><Play size={18} fill="currentColor" /> {isRtl ? 'بدء جلسة التعدين' : 'Start Mining'}</>}
+            </button>
           </div>
         )}
       </div>
-
-      {showActivateModal && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-xl animate-in fade-in" onClick={(e) => e.stopPropagation()}>
-          <div className="glass w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl text-center border border-white/10">
-             <div className="w-16 h-16 bg-blue-600/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <TrendingUp size={32} />
-             </div>
-             <h4 className="text-xl font-black text-white">{isRtl ? 'تفعيل الجهاز' : 'Activate Device'}</h4>
-             <p className="text-xs text-slate-400 font-bold mb-6">{isRtl ? 'اختر دورة التعدين المناسبة لك' : 'Choose your mining cycle'}</p>
-
-             <div className="grid gap-3">
-                <button onClick={() => handleStart(3, 2.0)} className="w-full p-4 rounded-2xl bg-slate-900 border border-white/5 hover:border-blue-500 flex justify-between items-center transition-all">
-                  <div className="text-right">
-                    <p className="font-black text-sm text-white">{isRtl ? 'دورة 3 أيام' : '3 Days Cycle'}</p>
-                    <p className="text-[10px] text-emerald-400 font-bold">{isRtl ? 'ربح 2.0% يومياً' : '2.0% Daily'}</p>
-                  </div>
-                  <Zap size={18} className="text-blue-500" />
-                </button>
-                
-                <button onClick={() => handleStart(7, 2.5)} className="w-full p-4 rounded-2xl bg-slate-900 border border-white/5 hover:border-blue-500 flex justify-between items-center transition-all">
-                  <div className="text-right">
-                    <p className="font-black text-sm text-white">{isRtl ? 'دورة 7 أيام' : '7 Days Cycle'}</p>
-                    <p className="text-[10px] text-emerald-400 font-bold">{isRtl ? 'ربح 2.5% يومياً' : '2.5% Daily'}</p>
-                  </div>
-                  <Zap size={18} className="text-blue-500" />
-                </button>
-
-                <button onClick={() => setShowActivateModal(false)} className="mt-4 text-[10px] text-slate-500 font-black uppercase tracking-widest hover:text-white">
-                  {isRtl ? 'إلغاء' : 'Cancel'}
-                </button>
-             </div>
-             {activating && (
-                <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm rounded-[2.5rem] flex flex-col items-center justify-center z-20">
-                   <Loader2 className="animate-spin text-blue-500 mb-2" size={32} />
-                   <p className="text-white text-[10px] font-black uppercase tracking-widest">Connecting Pool...</p>
-                </div>
-             )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -154,38 +97,48 @@ const MyDevices = () => {
   const { user } = useUser();
   const { isRtl } = useLanguage();
 
+  const stats = useMemo(() => {
+    const running = user.activePackages.filter(p => p.status === DeviceStatus.RUNNING).length;
+    const idle = user.activePackages.length - running;
+    return { running, idle };
+  }, [user.activePackages]);
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 font-cairo pb-24 text-right" dir="rtl">
-      <header className="flex items-center justify-between gap-4 px-2">
+    <div className="space-y-8 animate-in fade-in duration-700 font-cairo pb-24 text-right" dir="rtl">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate(-1)} className="p-2.5 glass rounded-xl text-slate-400 hover:text-white transition-all active:scale-90 border border-white/5">
-            <ArrowRight size={20} />
+          <button onClick={() => navigate(-1)} className="p-3 glass rounded-2xl text-slate-400 hover:text-white transition-all border border-white/5">
+            <ArrowRight size={24} />
           </button>
           <div>
-            <h1 className="text-2xl font-black text-white">{isRtl ? 'أجهزتي الخاصة' : 'My Devices'}</h1>
-            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{isRtl ? 'لوحة التحكم الفنية' : 'Control Panel'}</p>
+            <h1 className="text-3xl font-black text-white">{isRtl ? 'مركز أجهزتي' : 'My Mining Center'}</h1>
+            <p className="text-slate-500 font-bold text-sm">أنت تمتلك {user.activePackages.length} أجهزة تعدين نشطة.</p>
           </div>
         </div>
-        <div className="bg-blue-600/10 border border-blue-500/20 px-3 py-1.5 rounded-xl flex items-center gap-2">
-           <Zap size={14} className="text-blue-500" />
-           <span className="text-[12px] font-black text-white">{user.activePackages.length}</span>
+        <div className="flex gap-3">
+          <div className="glass px-4 py-2 rounded-xl border-emerald-500/20 bg-emerald-500/5">
+             <span className="text-[10px] text-emerald-500 font-black block leading-none">نشط</span>
+             <span className="text-lg font-black text-white font-mono leading-none">{stats.running}</span>
+          </div>
+          <div className="glass px-4 py-2 rounded-xl border-slate-700 bg-slate-800/20">
+             <span className="text-[10px] text-slate-500 font-black block leading-none">جاهز</span>
+             <span className="text-lg font-black text-white font-mono leading-none">{stats.idle}</span>
+          </div>
         </div>
       </header>
 
       {user.activePackages.length > 0 ? (
-        <div className="grid grid-cols-2 gap-3 max-w-4xl mx-auto px-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {user.activePackages.map((pkg) => <DeviceCard key={pkg.instanceId} pkg={pkg} />)}
         </div>
       ) : (
-        <div className="glass p-12 rounded-[3rem] text-center border-dashed border-2 border-slate-800 flex flex-col items-center max-w-2xl mx-auto mt-12">
-          <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-slate-700 mb-6 border border-white/5">
-             <Cpu size={32} />
+        <div className="glass p-20 rounded-[3.5rem] text-center border-dashed border-2 border-slate-800 flex flex-col items-center justify-center max-w-2xl mx-auto mt-12 bg-slate-900/20">
+          <div className="w-24 h-24 bg-slate-800/50 rounded-full flex items-center justify-center mb-8 text-slate-700">
+            <Cpu size={48} />
           </div>
-          <h3 className="text-lg font-black text-white mb-2">{isRtl ? 'لا توجد أجهزة' : 'No Devices'}</h3>
-          <p className="text-slate-500 font-bold mb-8 text-[10px] max-w-xs">{isRtl ? 'لم تقم بامتلاك أي قوة تعدين بعد.' : 'No mining power owned yet.'}</p>
-          <button onClick={() => navigate('/market')} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xs shadow-xl shadow-blue-600/20 active:scale-95 transition-all">
-             {isRtl ? 'الذهاب للمتجر' : 'Visit Market'}
-          </button>
+          <h3 className="text-2xl font-black text-white mb-2">{isRtl ? 'لا توجد أجهزة ممتلكة' : 'No Devices Owned'}</h3>
+          <p className="text-slate-500 font-bold max-w-sm mb-10 leading-relaxed">ابدأ الآن بامتلاك أول جهاز تعدين لك من المتجر وابدأ في جني الأرباح كل ثانية.</p>
+          <button onClick={() => navigate('/market')} className="bg-blue-600 text-white px-10 py-5 rounded-[2rem] font-black text-lg shadow-2xl shadow-blue-600/30 active:scale-95 transition-all">الذهاب للمتجر الآن</button>
         </div>
       )}
     </div>

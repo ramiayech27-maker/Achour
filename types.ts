@@ -69,7 +69,6 @@ export interface UserPackage {
   expiryDate?: number; 
   currentDurationDays?: number;
   currentDailyRate?: number;
-  isClaimed: boolean; 
   icon: string;
   dailyProfit: number;
 }
@@ -99,8 +98,8 @@ export interface User {
   totalDeposits: number;
   totalEarnings: number;
   referralCode: string;
-  referredBy?: string; // كود الشخص الذي دعاه
-  referralsList: ReferralEntry[]; // قائمة الأشخاص الذين دعاهم
+  referredBy?: string; 
+  referralsList: ReferralEntry[]; 
   referralCount: number;
   referralEarnings: number;
   role: 'USER' | 'ADMIN';
@@ -108,8 +107,6 @@ export interface User {
   transactions: Transaction[];
   notifications: AppNotification[];
   lastProfitUpdate: number;
-  hasSeenOnboarding: boolean;
-  hasClaimedWelcomeGift: boolean;
   hasSavedRecoveryKey: boolean;
   lastSeenChatTime?: number;
 }

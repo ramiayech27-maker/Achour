@@ -34,14 +34,13 @@ const SplashScreen = () => (
     <h2 className="text-2xl font-black text-white mb-2 tracking-tight">MineCloud</h2>
     <div className="flex items-center gap-2 text-slate-500 font-bold text-sm tracking-tight">
       <Loader2 size={16} className="animate-spin" />
-      <span>جاري تأمين الجلسة السحابية...</span>
+      <span>Connecting to Secure Cloud...</span>
     </div>
   </div>
 );
 
 const AppRoutes = () => {
   const { isAuthenticated, isProfileLoaded, user } = useUser();
-
   if (!isProfileLoaded) return <SplashScreen />;
 
   return (
@@ -82,19 +81,14 @@ const AuthView = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); 
     setError(null); 
-    if (!isCloudConnected) { setError("السحابة غير متصلة!"); return; }
-    
-    if (authMode === 'register' && password !== confirmPassword) {
-      setError("كلمات المرور غير متطابقة.");
-      return;
-    }
-
+    if (!isCloudConnected) { setError("Cloud disconnected!"); return; }
+    if (authMode === 'register' && password !== confirmPassword) { setError("Passwords do not match."); return; }
     setIsLoading(true);
     try {
       const result = authMode === 'register' ? await register(email, password) : await login(email, password);
       if (result.success) navigate('/dashboard', { replace: true }); 
-      else setError(result.error || 'خطأ غير متوقع');
-    } catch (err: any) { setError("خطأ في الاتصال."); } finally { setIsLoading(false); }
+      else setError(result.error || 'Unexpected error');
+    } catch (err: any) { setError("Connection error."); } finally { setIsLoading(false); }
   };
 
   return (
@@ -105,18 +99,15 @@ const AuthView = () => {
             <img src={LOGO_URL} alt="MineCloud" className="w-full h-full object-cover" />
           </div>
           <h2 className="text-3xl font-black text-white mb-2">{authMode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}</h2>
-          <p className="text-slate-500 text-xs font-bold tracking-tight">منصة التعدين السحابي الاحترافية</p>
         </div>
         {error && <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl text-rose-400 text-xs font-bold animate-shake text-center">{error}</div>}
         <form className="space-y-4" onSubmit={handleSubmit}>
           <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
           <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="كلمة المرور" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
-          
           {authMode === 'register' && (
-             <input required type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="تأكيد كلمة المرور" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right animate-in slide-in-from-top-2" />
+             <input required type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="تأكيد كلمة المرور" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
           )}
-
-          <button disabled={isLoading} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-600/20 transition-all active:scale-95 flex items-center justify-center">
+          <button disabled={isLoading} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-600/20 active:scale-95 flex items-center justify-center">
             {isLoading ? <Loader2 className="animate-spin" /> : (authMode === 'login' ? 'دخول آمن' : 'إنشاء الحساب الآن')}
           </button>
         </form>
@@ -128,11 +119,5 @@ const AuthView = () => {
   );
 };
 
-const App = () => (
-  <UserProvider>
-    <LanguageProvider>
-      <AppRoutes />
-    </LanguageProvider>
-  </UserProvider>
-);
+const App = () => (<UserProvider><LanguageProvider><AppRoutes /></LanguageProvider></UserProvider>);
 export default App;
