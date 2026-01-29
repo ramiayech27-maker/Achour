@@ -1,12 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabaseConfig';
 import { INITIAL_USER } from './constants';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabaseConfig';
 import { User, MiningPackage, TransactionType, TransactionStatus, DeviceStatus, AppNotification, NotificationType, UserPackage, Transaction } from './types';
-
-const isPlaceHolder = SUPABASE_URL.includes("your-project-id") || SUPABASE_ANON_KEY.includes("your-public-anon-key");
-const supabase = (SUPABASE_URL.startsWith('http') && !isPlaceHolder) ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 interface UserContextType {
   user: User;
@@ -42,13 +38,12 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<User>(INITIAL_USER);
-  const [isSyncing, setIsSyncing] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isProfileLoaded, setIsProfileLoaded] = useState(false);
   const [autoPilotMode, setAutoPilotMode] = useState(false);
   const [latestNotification, setLatestNotification] = useState<AppNotification | null>(null);
 
-  const syncProfileWithAuth = async (authId: string) => {
-    if (!supabase) return;
+  const fetchProfile = async (authId: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -59,115 +54,114 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       if (data && !error) {
         let userData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
         
-        // التحقق الصارم من الرتبة من الأعمدة المستقلة
+        // التدقيق في الصلاحيات من الأعمدة مباشرة (Authoritative Check)
         const isAdmin = data.is_admin === true || data.role?.toLowerCase() === 'admin';
-        userData.role = isAdmin ? 'ADMIN' : 'USER';
-        userData.is_admin = isAdmin;
-        userData.id = authId; // ضمان تطابق الـ ID
+        
+        const synchronizedUser: User = {
+          ...userData,
+          id: authId,
+          email: data.email || userData.email,
+          role: isAdmin ? 'ADMIN' : 'USER',
+          is_admin: isAdmin
+        };
 
-        setUser(userData);
+        console.log(`[MineCloud] Profile Sync: ${synchronizedUser.email} (Admin: ${isAdmin})`);
+        setUser(synchronizedUser);
         setIsAuthenticated(true);
         return isAdmin;
       }
     } catch (e) {
-      console.error("Profile Sync Error:", e);
+      console.error("[MineCloud] Error fetching profile:", e);
     }
     return false;
   };
 
   const saveToCloud = async (updatedUser: User) => {
     setUser(updatedUser);
-    if (supabase && updatedUser.id) {
+    if (updatedUser.id) {
       try {
-        const { error } = await supabase.from('profiles').update({
+        await supabase.from('profiles').update({
           data: updatedUser
         }).eq('id', updatedUser.id);
-        if (error) throw error;
       } catch (e) { 
-        console.error("Cloud Save Failed:", e); 
+        console.error("[MineCloud] Cloud Update Error:", e); 
       }
     }
   };
 
   useEffect(() => {
-    const restoreSession = async () => {
-      if (supabase) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          await syncProfileWithAuth(session.user.id);
-        }
+    // 1. تحقق من الجلسة الحالية عند بدء التطبيق
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        console.log("[MineCloud] Session restored from storage");
+        await fetchProfile(session.user.id);
       }
-      setIsSyncing(false);
       setIsProfileLoaded(true);
     };
-    restoreSession();
+
+    initAuth();
+
+    // 2. الاستماع لتغيرات حالة المصادقة (دخول/خروج)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log(`[MineCloud] Auth Event: ${event}`);
+      if (session?.user) {
+        await fetchProfile(session.user.id);
+      } else {
+        setIsAuthenticated(false);
+        setUser(INITIAL_USER);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   return (
     <UserContext.Provider value={{
-      user, isAuthenticated, isSyncing, isProfileLoaded, isCloudConnected: !!supabase,
+      user, isAuthenticated, isSyncing, isProfileLoaded, isCloudConnected: true,
       latestNotification,
       login: async (email, password) => {
         setIsSyncing(true);
-        if (!supabase) return { success: false, error: 'Cloud disconnected.' };
-        
         const { data, error } = await supabase.auth.signInWithPassword({ email, password: password || '' });
-        
-        if (error) {
+        if (error || !data.user) {
           setIsSyncing(false);
-          return { success: false, error: 'خطأ في بيانات الدخول.' };
+          return { success: false, error: 'البريد أو كلمة المرور غير صحيحة' };
         }
-
-        if (data.user) {
-          const isAdmin = await syncProfileWithAuth(data.user.id);
-          setIsSyncing(false);
-          return { success: true, isAdmin };
-        }
-
+        const isAdmin = await fetchProfile(data.user.id);
         setIsSyncing(false);
-        return { success: false };
+        return { success: true, isAdmin };
       },
       register: async (email, password) => {
         setIsSyncing(true);
-        if (!supabase) return { success: false, error: 'Cloud disconnected.' };
-        
         const { data, error } = await supabase.auth.signUp({ email, password: password || '' });
+        if (error || !data.user) {
+          setIsSyncing(false);
+          return { success: false, error: error?.message || 'فشل التسجيل' };
+        }
         
-        if (error) {
-          setIsSyncing(false);
-          return { success: false, error: error.message };
-        }
+        const newUser: User = { 
+          ...INITIAL_USER, 
+          id: data.user.id, 
+          email: email.toLowerCase(), 
+          referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
+          transactions: [], activePackages: [], notifications: []
+        };
+        
+        await supabase.from('profiles').insert({ 
+          id: data.user.id, 
+          email: email.toLowerCase(), 
+          data: newUser, 
+          role: 'user', 
+          is_admin: false 
+        });
 
-        if (data.user) {
-          const newUser = { 
-            ...INITIAL_USER, 
-            id: data.user.id, 
-            email: email.toLowerCase(), 
-            referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
-            transactions: [], activePackages: [], notifications: []
-          };
-          
-          await supabase.from('profiles').insert({ 
-            id: data.user.id, 
-            email: email.toLowerCase(), 
-            data: newUser, 
-            role: 'user', 
-            is_admin: false 
-          });
-
-          setUser(newUser);
-          setIsAuthenticated(true);
-          setIsSyncing(false);
-          return { success: true };
-        }
-
+        setUser(newUser);
+        setIsAuthenticated(true);
         setIsSyncing(false);
-        return { success: false };
+        return { success: true };
       },
       logout: async () => { 
-        if(supabase) await supabase.auth.signOut();
-        setIsAuthenticated(false); 
-        setUser(INITIAL_USER); 
+        await supabase.auth.signOut();
       },
       purchaseDevice: async (pkg) => {
         if (user.balance < pkg.price) return false;
@@ -201,7 +195,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         return true;
       },
       approveTransaction: async (uid, txid) => {
-        if (!supabase) return;
         const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
         if (data) {
           const d = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
@@ -221,7 +214,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         }
       },
       rejectTransaction: async (uid, txid) => {
-        if (!supabase) return;
         const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
         if (data) {
           const d = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
@@ -241,12 +233,13 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         }
       },
       updateUserRole: async (uid, role) => {
-        if (!supabase) return;
         const isAdmin = role === 'ADMIN';
         await supabase.from('profiles').update({ role: role.toLowerCase(), is_admin: isAdmin }).eq('id', uid);
+        if (user.id === uid) {
+          setUser(prev => ({ ...prev, role: isAdmin ? 'ADMIN' : 'USER', is_admin: isAdmin }));
+        }
       },
       deleteChatMessage: async (mid) => {
-        if (!supabase) return;
         await supabase.from('global_chat').delete().eq('id', mid);
       },
       addNotification: (title, message, type) => {
@@ -256,7 +249,10 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         setTimeout(() => setLatestNotification(null), 5000);
       },
       markChatAsRead: () => setUser(p => ({ ...p, lastSeenChatTime: Date.now() })),
-      resetSystem: () => { localStorage.clear(); window.location.reload(); },
+      resetSystem: async () => { 
+        await supabase.auth.signOut();
+        window.location.reload(); 
+      },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
       autoPilotMode,
       toggleAutoPilot: () => setAutoPilotMode(!autoPilotMode),

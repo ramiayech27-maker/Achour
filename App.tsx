@@ -54,6 +54,7 @@ const AppRoutes = () => {
   const { isAuthenticated, isProfileLoaded, user } = useUser();
   if (!isProfileLoaded) return <SplashScreen />;
 
+  // تحقق صارم من البيانات المزامنة
   const isAdmin = user.is_admin === true || user.role?.toLowerCase() === 'admin';
 
   return (
@@ -95,12 +96,11 @@ const AuthView = () => {
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
-  const { login, register, isCloudConnected } = useUser();
+  const { login, register } = useUser();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); 
     setError(null); 
-    if (!isCloudConnected) { setError("Cloud disconnected!"); return; }
     if (authMode === 'register' && password !== confirmPassword) { setError("كلمات المرور غير متطابقة."); return; }
     setIsLoading(true);
     try {
@@ -111,7 +111,7 @@ const AuthView = () => {
       }
       else setError(result.error || 'فشل تسجيل الدخول');
     } catch (err: any) { 
-      setError(err.message || "خطأ في الاتصال."); 
+      setError(err.message || "خطأ في الاتصال بالسحابة."); 
     } finally { 
       setIsLoading(false); 
     }
