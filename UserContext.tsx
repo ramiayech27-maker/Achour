@@ -111,7 +111,8 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         if (existing) { setIsSyncing(false); return { success: false, error: 'Email already exists.' }; }
         const newUser = { 
           ...INITIAL_USER, id: `U-${Date.now()}`, email: normalizedEmail, password: pass, 
-          referralCode: 'MC-'+Math.floor(1000+Math.random()*9000)
+          referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
+          transactions: [], activePackages: [], notifications: []
         };
         await supabase.from('profiles').insert({ email: normalizedEmail, data: newUser });
         localStorage.setItem(AUTH_KEY, normalizedEmail);
@@ -127,13 +128,13 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           instanceId: `D-${Date.now()}`, packageId: pkg.id, name: pkg.name, priceAtPurchase: pkg.price, 
           status: DeviceStatus.IDLE, purchaseDate: Date.now(), icon: pkg.icon, dailyProfit: (pkg.price * pkg.dailyProfitPercent)/100 
         };
-        await saveToCloud({ ...user, balance: user.balance - pkg.price, activePackages: [newPkg, ...user.activePackages] });
+        await saveToCloud({ ...user, balance: user.balance - pkg.price, activePackages: [newPkg, ...(user.activePackages || [])] });
         return true;
       },
       activateCycle: async (id, days, rate) => {
         const updated = { 
           ...user, 
-          activePackages: user.activePackages.map(p => 
+          activePackages: (user.activePackages || []).map(p => 
             p.instanceId === id ? { 
               ...p, 
               status: DeviceStatus.RUNNING, 
@@ -157,8 +158,8 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           currency: 'USDT', 
           txHash: hash 
         };
-        // التأكد من أن المصفوفة موجودة ومحدثة
-        const updatedTransactions = [tx, ...(user.transactions || [])];
+        const currentTxs = Array.isArray(user.transactions) ? user.transactions : [];
+        const updatedTransactions = [tx, ...currentTxs];
         await saveToCloud({ ...user, transactions: updatedTransactions });
       },
       withdrawFunds: async (amount, addr) => {
@@ -172,7 +173,8 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           currency: 'USDT', 
           address: addr 
         };
-        const updatedTransactions = [tx, ...(user.transactions || [])];
+        const currentTxs = Array.isArray(user.transactions) ? user.transactions : [];
+        const updatedTransactions = [tx, ...currentTxs];
         await saveToCloud({ ...user, balance: user.balance - amount, transactions: updatedTransactions });
         return true;
       },
@@ -182,7 +184,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         if (data) {
           const d = data.data;
           let found = false;
-          d.transactions = d.transactions.map((tx:any) => {
+          d.transactions = (d.transactions || []).map((tx:any) => {
             if (tx.id === txid && tx.status === TransactionStatus.PENDING) {
               if (tx.type === TransactionType.DEPOSIT) d.balance += tx.amount;
               found = true;
@@ -202,7 +204,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         if (data) {
           const d = data.data;
           let found = false;
-          d.transactions = d.transactions.map((tx:any) => {
+          d.transactions = (d.transactions || []).map((tx:any) => {
             if (tx.id === txid && tx.status === TransactionStatus.PENDING) {
               if (tx.type === TransactionType.WITHDRAWAL) d.balance += tx.amount;
               found = true;
@@ -219,7 +221,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       addNotification: (title, message, type) => {
         const n = { id: `N-${Date.now()}`, title, message, type, date: new Date().toISOString(), isRead: false };
         setLatestNotification(n);
-        setUser(p => ({ ...p, notifications: [n, ...p.notifications].slice(0, 20) }));
+        setUser(p => ({ ...p, notifications: [n, ...(p.notifications || [])].slice(0, 20) }));
         setTimeout(() => setLatestNotification(null), 5000);
       },
       markChatAsRead: () => setUser(p => ({ ...p, lastSeenChatTime: Date.now() })),
@@ -238,14 +240,17 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         const { data } = await supabase.from('profiles').select('email').eq('email', e.toLowerCase()).maybeSingle();
         return { exists: !!data };
       },
-      toggleRole: () => setUser(p => ({ ...p, role: p.role === 'ADMIN' ? 'USER' : 'ADMIN' })),
+      toggleRole: () => {
+        const newRole = user.role === 'ADMIN' ? 'USER' : 'ADMIN';
+        saveToCloud({ ...user, role: newRole });
+      },
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
       autoPilotMode,
       toggleAutoPilot: () => setAutoPilotMode(!autoPilotMode),
       requestNotificationPermission: async () => true,
       exportAccount: () => { try { return btoa(JSON.stringify(user)); } catch (e) { return ""; } },
-      markNotificationsAsRead: () => setUser(p => ({ ...p, notifications: p.notifications.map(n => ({ ...n, isRead: true })) })),
+      markNotificationsAsRead: () => setUser(p => ({ ...p, notifications: (p.notifications || []).map(n => ({ ...n, isRead: true })) })),
       clearNotifications: () => setUser(p => ({ ...p, notifications: [] }))
     }}>
       {children}
