@@ -54,11 +54,14 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     setUser(updatedUser);
     if (supabase && updatedUser.email && updatedUser.email !== '') {
       try {
-        await supabase.from('profiles').upsert(
+        const { error } = await supabase.from('profiles').upsert(
           { email: updatedUser.email.toLowerCase(), data: updatedUser },
           { onConflict: 'email' }
         );
-      } catch (e) { console.error("Cloud Save Failed:", e); }
+        if (error) throw error;
+      } catch (e) { 
+        console.error("Cloud Save Failed:", e); 
+      }
     }
   };
 
@@ -128,7 +131,19 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         return true;
       },
       activateCycle: async (id, days, rate) => {
-        const updated = { ...user, activePackages: user.activePackages.map(p => p.instanceId === id ? { ...p, status: DeviceStatus.RUNNING, lastActivationDate: Date.now(), expiryDate: Date.now()+(days*86400000), currentDurationDays: days, currentDailyRate: rate } : p) };
+        const updated = { 
+          ...user, 
+          activePackages: user.activePackages.map(p => 
+            p.instanceId === id ? { 
+              ...p, 
+              status: DeviceStatus.RUNNING, 
+              lastActivationDate: Date.now(), 
+              expiryDate: Date.now() + (days * 86400000), 
+              currentDurationDays: days, 
+              currentDailyRate: rate 
+            } : p
+          ) 
+        };
         await saveToCloud(updated);
         return true;
       },
@@ -157,6 +172,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           address: addr 
         };
         const updatedTransactions = [tx, ...(user.transactions || [])];
+        // خصم الرصيد فور تقديم الطلب لضمان الجدية
         await saveToCloud({ ...user, balance: user.balance - amount, transactions: updatedTransactions });
         return true;
       },
@@ -188,6 +204,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           let found = false;
           d.transactions = d.transactions.map((tx:any) => {
             if (tx.id === txid && tx.status === TransactionStatus.PENDING) {
+              // إذا كان سحب وتم رفضه، نعيد المال للرصيد
               if (tx.type === TransactionType.WITHDRAWAL) d.balance += tx.amount;
               found = true;
               return { ...tx, status: TransactionStatus.REJECTED };
