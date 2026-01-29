@@ -54,7 +54,7 @@ const AppRoutes = () => {
   const { isAuthenticated, isProfileLoaded, user } = useUser();
   if (!isProfileLoaded) return <SplashScreen />;
 
-  // تحقق صارم من البيانات المزامنة
+  // التحقق السلطوي من رتبة المسؤول
   const isAdmin = user.is_admin === true || user.role?.toLowerCase() === 'admin';
 
   return (

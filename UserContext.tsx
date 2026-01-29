@@ -43,7 +43,8 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
   const [autoPilotMode, setAutoPilotMode] = useState(false);
   const [latestNotification, setLatestNotification] = useState<AppNotification | null>(null);
 
-  const fetchProfile = async (authId: string) => {
+  // الوظيفة الأساسية لجلب البيانات من جدول Profiles بناءً على ID المستخدم
+  const syncProfileData = async (authId: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -54,10 +55,10 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       if (data && !error) {
         let userData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
         
-        // التدقيق في الصلاحيات من الأعمدة مباشرة (Authoritative Check)
+        // التحقق الصارم من الأعمدة (Authoritative Check)
         const isAdmin = data.is_admin === true || data.role?.toLowerCase() === 'admin';
         
-        const synchronizedUser: User = {
+        const freshUser: User = {
           ...userData,
           id: authId,
           email: data.email || userData.email,
@@ -65,13 +66,19 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           is_admin: isAdmin
         };
 
-        console.log(`[MineCloud] Profile Sync: ${synchronizedUser.email} (Admin: ${isAdmin})`);
-        setUser(synchronizedUser);
+        console.log("%c [MineCloud] Profile Refetched ", "background: #1e293b; color: #38bdf8; padding: 2px 5px; border-radius: 4px;", {
+          id: authId,
+          email: freshUser.email,
+          role: freshUser.role,
+          is_admin: freshUser.is_admin
+        });
+
+        setUser(freshUser);
         setIsAuthenticated(true);
         return isAdmin;
       }
     } catch (e) {
-      console.error("[MineCloud] Error fetching profile:", e);
+      console.error("[MineCloud] Critical profile sync error:", e);
     }
     return false;
   };
@@ -90,24 +97,24 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
   };
 
   useEffect(() => {
-    // 1. تحقق من الجلسة الحالية عند بدء التطبيق
-    const initAuth = async () => {
+    const initSession = async () => {
+      // 1. استعادة الجلسة عند بدء تشغيل التطبيق
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        console.log("[MineCloud] Session restored from storage");
-        await fetchProfile(session.user.id);
+        console.log("[MineCloud] Session found, syncing profile...");
+        await syncProfileData(session.user.id);
       }
       setIsProfileLoaded(true);
     };
 
-    initAuth();
+    initSession();
 
-    // 2. الاستماع لتغيرات حالة المصادقة (دخول/خروج)
+    // 2. مستمع لتغييرات حالة المصادقة (دخول، خروج، تجديد التوكن)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log(`[MineCloud] Auth Event: ${event}`);
       if (session?.user) {
-        await fetchProfile(session.user.id);
-      } else {
+        await syncProfileData(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
         setIsAuthenticated(false);
         setUser(INITIAL_USER);
       }
@@ -125,9 +132,9 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         const { data, error } = await supabase.auth.signInWithPassword({ email, password: password || '' });
         if (error || !data.user) {
           setIsSyncing(false);
-          return { success: false, error: 'البريد أو كلمة المرور غير صحيحة' };
+          return { success: false, error: 'بيانات الدخول غير صحيحة' };
         }
-        const isAdmin = await fetchProfile(data.user.id);
+        const isAdmin = await syncProfileData(data.user.id);
         setIsSyncing(false);
         return { success: true, isAdmin };
       },
@@ -136,7 +143,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         const { data, error } = await supabase.auth.signUp({ email, password: password || '' });
         if (error || !data.user) {
           setIsSyncing(false);
-          return { success: false, error: error?.message || 'فشل التسجيل' };
+          return { success: false, error: error?.message || 'فشل عملية التسجيل' };
         }
         
         const newUser: User = { 
