@@ -12,23 +12,12 @@ import { useUser } from '../UserContext';
 const Settings = () => {
   const navigate = useNavigate();
   const { language, setLanguage, t, isRtl } = useLanguage();
-  const { user, exportAccount, resetSystem, toggleRole, requestNotificationPermission, confirmRecoveryKeySaved, addNotification } = useUser();
+  const { user, exportAccount, resetSystem, requestNotificationPermission, confirmRecoveryKeySaved, addNotification } = useUser();
   
-  const [adminKeyInput, setAdminKeyInput] = useState('');
   const [copiedSync, setCopiedSync] = useState(false);
-  const [adminError, setAdminError] = useState<string | null>(null);
   const [syncCode, setSyncCode] = useState('');
   const [errorOccurred, setErrorOccurred] = useState(false);
   
-  const [notifStatus, setNotifStatus] = useState<string>(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      return Notification.permission;
-    }
-    return 'denied';
-  });
-
-  const MASTER_ADMIN_KEY = "MINECLOUD2025";
-
   useEffect(() => {
     try {
       const code = exportAccount();
@@ -40,15 +29,6 @@ const Settings = () => {
     }
   }, [user, exportAccount]);
 
-  const handleEnableNotifications = async () => {
-    if (!('Notification' in window)) return;
-    const granted = await requestNotificationPermission();
-    setNotifStatus(Notification.permission);
-    if (granted) {
-      addNotification(isRtl ? "تم التفعيل" : "Enabled", isRtl ? "ستصلك التنبيهات الآن." : "Alerts enabled.", "SUCCESS" as any);
-    }
-  };
-
   const handleCopySyncCode = () => {
     if (!syncCode) return;
     navigator.clipboard.writeText(syncCode).then(() => {
@@ -56,21 +36,6 @@ const Settings = () => {
       confirmRecoveryKeySaved(); 
       setTimeout(() => setCopiedSync(false), 2000);
     });
-  };
-
-  const handleActivateAdmin = () => {
-    setAdminError(null);
-    if (adminKeyInput.trim().toUpperCase() === MASTER_ADMIN_KEY) {
-      toggleRole();
-      setAdminKeyInput('');
-      addNotification(
-        isRtl ? "تمت العملية" : "Success", 
-        isRtl ? "تغيرت صلاحيات الحساب بنجاح." : "Account permissions updated.", 
-        "SUCCESS" as any
-      );
-    } else {
-      setAdminError(isRtl ? "مفتاح الوصول غير صحيح" : "Invalid Access Key");
-    }
   };
 
   if (errorOccurred) {
@@ -127,42 +92,6 @@ const Settings = () => {
                 {copiedSync ? <CheckCircle2 size={24} /> : <Copy size={24} />} 
                 {copiedSync ? (isRtl ? 'تم النسخ!' : 'Copied!') : (isRtl ? 'نسخ كود المزامنة' : 'Copy Sync Code')}
               </button>
-            </div>
-          </section>
-
-          {/* Admin Activation Section - Explicit */}
-          <section className="glass rounded-[2.5rem] border border-amber-500/20 bg-amber-500/5 overflow-hidden shadow-xl">
-            <div className="p-8 border-b border-white/5 flex items-center gap-4">
-              <div className="p-3 bg-amber-500/20 text-amber-500 rounded-2xl shadow-inner">
-                <Lock size={24} />
-              </div>
-              <div>
-                <h3 className="font-black text-xl text-white">{isRtl ? "صلاحيات الوصول المتقدمة" : "Advanced Access"}</h3>
-                <p className="text-xs text-slate-500 font-bold">{isRtl ? "أدخل مفتاح الإدارة لتفعيل لوحة التحكم." : "Enter admin key to enable dashboard."}</p>
-              </div>
-            </div>
-            <div className="p-8 space-y-5">
-              <div className="flex gap-3">
-                <input 
-                  type="password" 
-                  value={adminKeyInput}
-                  onChange={(e) => setAdminKeyInput(e.target.value)}
-                  placeholder="MASTER-KEY" 
-                  className="flex-1 bg-slate-950 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-amber-500 text-center font-black tracking-widest"
-                />
-                <button 
-                  onClick={handleActivateAdmin}
-                  className={`px-8 py-4 rounded-2xl font-black transition-all shadow-xl ${user.role === 'ADMIN' ? 'bg-rose-600 text-white' : 'bg-amber-600 text-slate-950 hover:bg-amber-500'}`}
-                >
-                  {user.role === 'ADMIN' ? (isRtl ? 'إلغاء الإدارة' : 'Revoke') : (isRtl ? 'تفعيل' : 'Activate')}
-                </button>
-              </div>
-              {adminError && <div className="text-center text-rose-500 text-xs font-black">{adminError}</div>}
-              {user.role === 'ADMIN' && (
-                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center gap-2 text-emerald-400 text-xs font-black">
-                  <ShieldCheck size={16} /> {isRtl ? "أنت مسجل كمسؤول الآن" : "You are currently an admin"}
-                </div>
-              )}
             </div>
           </section>
 

@@ -103,6 +103,7 @@ export interface User {
   referralCount: number;
   referralEarnings: number;
   role: 'USER' | 'ADMIN';
+  is_admin?: boolean;
   activePackages: UserPackage[];
   transactions: Transaction[];
   notifications: AppNotification[];

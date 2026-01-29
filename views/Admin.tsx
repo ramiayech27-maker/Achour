@@ -9,11 +9,11 @@ import { useUser } from '../UserContext';
 import { TransactionType, TransactionStatus, User } from '../types';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../supabaseConfig';
 
-const supabase = (SUPABASE_URL.startsWith('http')) ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const supabase = (SUPABASE_URL.startsWith('http') && !SUPABASE_URL.includes("your-project-id")) ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 const Admin = () => {
   const navigate = useNavigate();
-  const { user: currentAdmin, approveTransaction, rejectTransaction, toggleRole, depositFunds } = useUser();
+  const { user: currentAdmin, approveTransaction, rejectTransaction, depositFunds } = useUser();
   const [activeTab, setActiveTab] = useState<'transactions' | 'users' | 'diagnostic'>('transactions');
   const [registeredUsers, setRegisteredUsers] = useState<User[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -29,7 +29,11 @@ const Admin = () => {
       if (data) {
         const users = data.map(row => {
           try {
-            return typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+            let userData = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+            // Align role in the data blob with the row state for the list view
+            if (row.is_admin || row.role === 'admin') userData.role = 'ADMIN';
+            else userData.role = 'USER';
+            return userData;
           } catch (e) { return null; }
         }).filter(u => u && u.id);
         setRegisteredUsers(users);
@@ -42,20 +46,20 @@ const Admin = () => {
   };
 
   useEffect(() => {
+    // SECURITY CHECK: If user is not ADMIN, block access immediately
     if (currentAdmin.role !== 'ADMIN') {
-      alert("غير مصرح لك بالدخول.");
+      alert("غير مصرح لك بدخول لوحة الإدارة. سيتم تحويلك للرئيسية.");
       navigate('/dashboard');
       return;
     }
     loadAllData();
     const interval = setInterval(loadAllData, 20000); 
     return () => clearInterval(interval);
-  }, [currentAdmin.role]);
+  }, [currentAdmin.role, navigate]);
 
   const allTransactions = useMemo(() => {
     const list: any[] = [];
     registeredUsers.forEach(u => {
-      // نتحقق من وجود مصفوفة العمليات ونتأكد من أنها ليست فارغة
       const txs = (u.transactions && Array.isArray(u.transactions)) ? u.transactions : [];
       txs.forEach((t: any) => {
         list.push({ ...t, userId: u.id, userEmail: u.email });
@@ -89,12 +93,7 @@ const Admin = () => {
     setIsRefreshing(false);
   };
 
-  const createTestTransaction = async () => {
-    if(confirm("سيتم إنشاء عملية إيداع اختبارية ($100) لحسابك لتأكيد ظهور البيانات. هل تستمر؟")) {
-       await depositFunds(100, 'crypto', 'DEBUG-' + Date.now());
-       setTimeout(loadAllData, 2000);
-    }
-  };
+  if (currentAdmin.role !== 'ADMIN') return null;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 font-cairo pb-20 text-right" dir="rtl">
@@ -108,7 +107,6 @@ const Admin = () => {
             </span>
          </div>
          <div className="flex gap-2">
-            <button onClick={createTestTransaction} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-[10px] font-black">إضافة عملية فحص 🛠️</button>
             <button onClick={loadAllData} className="p-1.5 bg-slate-800 rounded-lg text-white hover:bg-slate-700">
                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
             </button>
@@ -125,8 +123,8 @@ const Admin = () => {
               <p className="text-slate-500 font-bold">مراقبة العمليات المالية والمستخدمين.</p>
            </div>
         </div>
-        <button onClick={() => { toggleRole(); navigate('/dashboard'); }} className="bg-rose-600/10 text-rose-500 border border-rose-500/20 px-8 py-4 rounded-2xl font-black hover:bg-rose-600 hover:text-white transition-all">
-           خروج من الإدارة
+        <button onClick={() => navigate('/dashboard')} className="bg-slate-800 text-white px-8 py-4 rounded-2xl font-black hover:bg-slate-700 transition-all">
+           العودة للوحة المستخدم
         </button>
       </header>
 
@@ -208,7 +206,7 @@ const Admin = () => {
               </div>
               <div className="p-6 bg-slate-950 rounded-2xl border border-white/5">
                  <p className="text-xs text-slate-500 font-black mb-2 uppercase tracking-widest">تحقق يدوي:</p>
-                 <p className="text-slate-400 text-[10px] font-bold">إذا رأيت 9 مستخدمين والعمليات 0، فهذا يعني أن المستخدمين لم يرسلوا طلبات بعد.</p>
+                 <p className="text-slate-400 text-[10px] font-bold">الأدمن يمنح فقط عبر لوحة تحكم Supabase (is_admin = true).</p>
               </div>
            </div>
         </section>

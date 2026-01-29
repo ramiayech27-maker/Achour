@@ -25,7 +25,6 @@ interface UserContextType {
   rejectTransaction: (targetUserId: string, txId: string) => Promise<void>;
   addNotification: (title: string, message: string, type: NotificationType) => void;
   markChatAsRead: () => void;
-  toggleRole: () => void;
   resetSystem: () => void;
   confirmRecoveryKeySaved: () => void;
   autoPilotMode: boolean;
@@ -54,6 +53,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     setUser(updatedUser);
     if (supabase && updatedUser.email && updatedUser.email !== '') {
       try {
+        // Only saving the data blob, not modifying role/is_admin from client side
         const { error } = await supabase.from('profiles').upsert(
           { email: updatedUser.email.toLowerCase(), data: updatedUser },
           { onConflict: 'email' }
@@ -71,9 +71,16 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       if (savedEmail && supabase) {
         setIsSyncing(true);
         try {
-          const { data, error } = await supabase.from('profiles').select('data').eq('email', savedEmail.toLowerCase()).maybeSingle();
+          const { data, error } = await supabase.from('profiles').select('*').eq('email', savedEmail.toLowerCase()).maybeSingle();
           if (data && !error) {
-            setUser(data.data);
+            let userData = data.data;
+            // Strict enforce admin role from database columns
+            if (data.is_admin === true || data.role === 'admin') {
+              userData.role = 'ADMIN';
+            } else {
+              userData.role = 'USER';
+            }
+            setUser(userData);
             setIsAuthenticated(true);
           }
         } catch (e) { console.error("Restore Session Failed:", e); }
@@ -92,10 +99,21 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         setIsSyncing(true);
         const normalizedEmail = email.toLowerCase().trim();
         if (!supabase) return { success: false, error: 'Cloud disconnected.' };
-        const { data } = await supabase.from('profiles').select('data').eq('email', normalizedEmail).maybeSingle();
+        
+        const { data, error } = await supabase.from('profiles').select('*').eq('email', normalizedEmail).maybeSingle();
+        
         if (data && data.data.password === pass) {
           localStorage.setItem(AUTH_KEY, normalizedEmail);
-          setUser(data.data);
+          let userData = data.data;
+          
+          // Strict enforce admin role from database columns
+          if (data.is_admin === true || data.role === 'admin') {
+            userData.role = 'ADMIN';
+          } else {
+            userData.role = 'USER';
+          }
+
+          setUser(userData);
           setIsAuthenticated(true);
           setIsSyncing(false);
           return { success: true };
@@ -114,7 +132,8 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
           transactions: [], activePackages: [], notifications: []
         };
-        await supabase.from('profiles').insert({ email: normalizedEmail, data: newUser });
+        // Initial registration is always USER
+        await supabase.from('profiles').insert({ email: normalizedEmail, data: newUser, role: 'user', is_admin: false });
         localStorage.setItem(AUTH_KEY, normalizedEmail);
         setUser(newUser);
         setIsAuthenticated(true);
@@ -239,10 +258,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         if (!supabase) return { exists: false };
         const { data } = await supabase.from('profiles').select('email').eq('email', e.toLowerCase()).maybeSingle();
         return { exists: !!data };
-      },
-      toggleRole: () => {
-        const newRole = user.role === 'ADMIN' ? 'USER' : 'ADMIN';
-        saveToCloud({ ...user, role: newRole });
       },
       resetSystem: () => { localStorage.clear(); window.location.reload(); },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
