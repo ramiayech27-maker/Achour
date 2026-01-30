@@ -45,22 +45,22 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
 
   const syncProfileData = async (authId: string) => {
     try {
-      console.log(`[MineCloud] Fetching DB Profile for ID: ${authId}`);
+      console.log(`[MineCloud] Querying profiles table for: ${authId}`);
       
       const { data, error } = await supabase
         .from('profiles')
         .select('id, email, role, is_admin, data')
         .eq('id', authId)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        console.error("[MineCloud] DB Sync Error:", error.message);
-        // في حال فشل جلب البيانات من الجدول، نعتمد على بيانات الجلسة الحالية
-        setIsAuthenticated(true);
+        console.error("[MineCloud] DB Error:", error.message);
         return false;
       }
 
       if (data) {
+        console.log("[MineCloud] Raw Profile Data:", data);
+        
         let userDataFromJSON = typeof data.data === 'string' ? JSON.parse(data.data) : (data.data || {});
         
         // التحقق السلطوي من الأعمدة
@@ -72,21 +72,19 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           id: authId,
           email: data.email || userDataFromJSON.email || '',
           role: isAdmin ? 'ADMIN' : 'USER',
-          is_admin: isAdmin // نضمن تحديث القيمة هنا
+          is_admin: !!isAdmin // نضمن أنها boolean وليست undefined
         };
-
-        console.log("%c [MineCloud] Profile Verified ", "background: #1e293b; color: #fbbf24; font-weight: bold; padding: 2px 5px;", {
-          email: freshUser.email,
-          role: freshUser.role,
-          is_admin: freshUser.is_admin
-        });
 
         setUser(freshUser);
         setIsAuthenticated(true);
         return isAdmin;
+      } else {
+        console.warn("[MineCloud] No profile record found. User is authenticated but profile is missing.");
+        // إذا كان المستخدم موجود في Auth ولكن ليس في profiles، نقوم بإنشاء سجل له
+        return false;
       }
     } catch (e) {
-      console.error("[MineCloud] Critical sync exception:", e);
+      console.error("[MineCloud] Sync Exception:", e);
     }
     return false;
   };
@@ -138,7 +136,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         if (error) {
           setIsSyncing(false);
           let msg = error.message;
-          if (msg.includes('rate limit')) msg = 'تم تجاوز حد الطلبات. يرجى الانتظار 15 دقيقة.';
+          if (msg.includes('rate limit')) msg = 'تم تجاوز حد الطلبات (Rate Limit). يرجى المحاولة بعد 15 دقيقة.';
           if (msg.includes('Invalid login')) msg = 'البريد أو كلمة المرور غير صحيحة.';
           return { success: false, error: msg };
         }
@@ -150,7 +148,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         }
         
         setIsSyncing(false);
-        return { success: false, error: 'حدث خطأ غير متوقع.' };
+        return { success: false, error: 'فشل تسجيل الدخول.' };
       },
       register: async (email, password) => {
         setIsSyncing(true);
@@ -159,7 +157,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         if (error) {
           setIsSyncing(false);
           let msg = error.message;
-          if (msg.includes('rate limit')) msg = 'تم تجاوز حد إرسال الإيميلات. جرب إيميل آخر أو انتظر قليلاً.';
+          if (msg.includes('rate limit')) msg = 'تجاوزت حد إرسال الرسائل. يرجى الانتظار قليلاً أو استخدام بريد مختلف.';
           return { success: false, error: msg };
         }
 
@@ -169,7 +167,9 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
             id: data.user.id, 
             email: email.toLowerCase(), 
             referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
-            transactions: [], activePackages: [], notifications: []
+            transactions: [], activePackages: [], notifications: [],
+            is_admin: false,
+            role: 'USER'
           };
           
           await supabase.from('profiles').insert({ 

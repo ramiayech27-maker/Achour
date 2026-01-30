@@ -45,7 +45,7 @@ const DebugOverlay = () => {
   return (
     <div className="fixed bottom-4 left-4 z-[9999] glass p-3 rounded-xl border border-blue-500/30 text-[10px] font-mono text-blue-400 flex items-center gap-2 pointer-events-none select-none">
       <Bug size={14} />
-      <span>Role: {user.role} | is_admin: {String(user.is_admin)} | ID: {user.id?.slice(0,5)}</span>
+      <span>Role: {user.role} | is_admin: {user.is_admin === undefined ? 'undefined' : String(user.is_admin)} | ID: {user.id?.slice(0,5)}</span>
     </div>
   );
 };
@@ -106,8 +106,7 @@ const AuthView = () => {
     try {
       const result = authMode === 'register' ? await register(email, password) : await login(email, password);
       if (result.success) {
-        if (result.isAdmin) navigate('/admin', { replace: true });
-        else navigate('/dashboard', { replace: true }); 
+        // سيتم التوجيه تلقائياً عبر AppRoutes
       }
       else setError(result.error || 'فشل تسجيل الدخول');
     } catch (err: any) { 
