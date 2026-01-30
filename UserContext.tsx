@@ -43,38 +43,39 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
   const [autoPilotMode, setAutoPilotMode] = useState(false);
   const [latestNotification, setLatestNotification] = useState<AppNotification | null>(null);
 
-  // وظيفة المزامنة الأساسية: تجلب البيانات من الجدول وتحدث الحالة
   const syncProfileData = async (authId: string) => {
     try {
-      console.log(`[MineCloud] Syncing profile for ID: ${authId}`);
+      console.log(`[MineCloud] Fetching DB Profile for ID: ${authId}`);
       
       const { data, error } = await supabase
         .from('profiles')
         .select('id, email, role, is_admin, data')
         .eq('id', authId)
-        .maybeSingle();
+        .single();
 
       if (error) {
-        console.error("[MineCloud] Error fetching profile from DB:", error.message);
+        console.error("[MineCloud] DB Sync Error:", error.message);
+        // في حال فشل جلب البيانات من الجدول، نعتمد على بيانات الجلسة الحالية
+        setIsAuthenticated(true);
         return false;
       }
 
       if (data) {
         let userDataFromJSON = typeof data.data === 'string' ? JSON.parse(data.data) : (data.data || {});
         
-        // التحقق من الأعمدة مباشرة (Authoritative Check)
+        // التحقق السلطوي من الأعمدة
         const isAdmin = data.is_admin === true || (data.role && data.role.toLowerCase() === 'admin');
         
         const freshUser: User = {
           ...INITIAL_USER,
           ...userDataFromJSON,
           id: authId,
-          email: data.email || userDataFromJSON.email,
+          email: data.email || userDataFromJSON.email || '',
           role: isAdmin ? 'ADMIN' : 'USER',
-          is_admin: isAdmin
+          is_admin: isAdmin // نضمن تحديث القيمة هنا
         };
 
-        console.log("%c [MineCloud] Profile Synced ✅", "color: #10b981; font-weight: bold;", {
+        console.log("%c [MineCloud] Profile Verified ", "background: #1e293b; color: #fbbf24; font-weight: bold; padding: 2px 5px;", {
           email: freshUser.email,
           role: freshUser.role,
           is_admin: freshUser.is_admin
@@ -83,11 +84,9 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         setUser(freshUser);
         setIsAuthenticated(true);
         return isAdmin;
-      } else {
-        console.warn("[MineCloud] No profile record found for this ID in 'profiles' table.");
       }
     } catch (e) {
-      console.error("[MineCloud] Sync exception:", e);
+      console.error("[MineCloud] Critical sync exception:", e);
     }
     return false;
   };
@@ -107,7 +106,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     const initAuth = async () => {
-      // التحقق من الجلسة الحالية
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (authUser) {
         await syncProfileData(authUser.id);
@@ -117,9 +115,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
 
     initAuth();
 
-    // مستمع لتغيرات حالة الدخول
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`[MineCloud] Auth Event: ${event}`);
       if (session?.user) {
         await syncProfileData(session.user.id);
       } else if (event === 'SIGNED_OUT') {
@@ -141,8 +137,9 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         
         if (error) {
           setIsSyncing(false);
-          let msg = 'بيانات الدخول غير صحيحة';
-          if (error.message.includes('rate limit')) msg = 'تجاوزت حد المحاولات المسموح به. يرجى الانتظار قليلاً.';
+          let msg = error.message;
+          if (msg.includes('rate limit')) msg = 'تم تجاوز حد الطلبات. يرجى الانتظار 15 دقيقة.';
+          if (msg.includes('Invalid login')) msg = 'البريد أو كلمة المرور غير صحيحة.';
           return { success: false, error: msg };
         }
 
@@ -153,7 +150,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         }
         
         setIsSyncing(false);
-        return { success: false, error: 'فشل غير متوقع' };
+        return { success: false, error: 'حدث خطأ غير متوقع.' };
       },
       register: async (email, password) => {
         setIsSyncing(true);
@@ -162,7 +159,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         if (error) {
           setIsSyncing(false);
           let msg = error.message;
-          if (error.message.includes('rate limit')) msg = 'تجاوزت حد إرسال الإيميلات (Rate Limit). يرجى المحاولة بعد ساعة.';
+          if (msg.includes('rate limit')) msg = 'تم تجاوز حد إرسال الإيميلات. جرب إيميل آخر أو انتظر قليلاً.';
           return { success: false, error: msg };
         }
 
@@ -190,7 +187,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         }
 
         setIsSyncing(false);
-        return { success: false, error: 'فشل إنشاء الحساب' };
+        return { success: false, error: 'فشل إنشاء الحساب.' };
       },
       logout: async () => { 
         await supabase.auth.signOut();
