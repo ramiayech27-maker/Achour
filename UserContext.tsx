@@ -45,8 +45,6 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
 
   const syncProfileData = async (authId: string) => {
     try {
-      console.log(`[MineCloud] Querying profiles table for: ${authId}`);
-      
       const { data, error } = await supabase
         .from('profiles')
         .select('id, email, role, is_admin, data')
@@ -54,16 +52,12 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         .maybeSingle();
 
       if (error) {
-        console.error("[MineCloud] DB Error:", error.message);
+        console.error("[MineCloud] Sync Error:", error.message);
         return false;
       }
 
       if (data) {
-        console.log("[MineCloud] Raw Profile Data:", data);
-        
         let userDataFromJSON = typeof data.data === 'string' ? JSON.parse(data.data) : (data.data || {});
-        
-        // التحقق السلطوي من الأعمدة
         const isAdmin = data.is_admin === true || (data.role && data.role.toLowerCase() === 'admin');
         
         const freshUser: User = {
@@ -72,16 +66,12 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           id: authId,
           email: data.email || userDataFromJSON.email || '',
           role: isAdmin ? 'ADMIN' : 'USER',
-          is_admin: !!isAdmin // نضمن أنها boolean وليست undefined
+          is_admin: !!isAdmin
         };
 
         setUser(freshUser);
         setIsAuthenticated(true);
         return isAdmin;
-      } else {
-        console.warn("[MineCloud] No profile record found. User is authenticated but profile is missing.");
-        // إذا كان المستخدم موجود في Auth ولكن ليس في profiles، نقوم بإنشاء سجل له
-        return false;
       }
     } catch (e) {
       console.error("[MineCloud] Sync Exception:", e);
@@ -93,71 +83,58 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     setUser(updatedUser);
     if (updatedUser.id) {
       try {
-        await supabase.from('profiles').update({
-          data: updatedUser
-        }).eq('id', updatedUser.id);
-      } catch (e) { 
-        console.error("[MineCloud] Cloud Update Error:", e); 
-      }
+        await supabase.from('profiles').update({ data: updatedUser }).eq('id', updatedUser.id);
+      } catch (e) { console.error("[MineCloud] Update Error:", e); }
     }
   };
 
   useEffect(() => {
     const initAuth = async () => {
       const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
-        await syncProfileData(authUser.id);
-      }
+      if (authUser) await syncProfileData(authUser.id);
       setIsProfileLoaded(true);
     };
-
     initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        await syncProfileData(session.user.id);
-      } else if (event === 'SIGNED_OUT') {
+      if (session?.user) await syncProfileData(session.user.id);
+      else if (event === 'SIGNED_OUT') {
         setIsAuthenticated(false);
         setUser(INITIAL_USER);
       }
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
   return (
     <UserContext.Provider value={{
-      user, isAuthenticated, isSyncing, isProfileLoaded, isCloudConnected: true,
-      latestNotification,
+      user, isAuthenticated, isSyncing, isProfileLoaded, isCloudConnected: true, latestNotification,
       login: async (email, password) => {
         setIsSyncing(true);
         const { data, error } = await supabase.auth.signInWithPassword({ email, password: password || '' });
-        
         if (error) {
           setIsSyncing(false);
           let msg = error.message;
-          if (msg.includes('rate limit')) msg = 'تم تجاوز حد الطلبات (Rate Limit). يرجى المحاولة بعد 15 دقيقة.';
-          if (msg.includes('Invalid login')) msg = 'البريد أو كلمة المرور غير صحيحة.';
+          if (msg.includes('rate limit')) msg = 'تم تجاوز حد الطلبات. حاول بعد قليل.';
+          if (msg.includes('Email not confirmed')) msg = 'يرجى تأكيد حسابك من خلال الرابط المرسل لبريدك الإلكتروني.';
           return { success: false, error: msg };
         }
-
         if (data.user) {
           const isAdmin = await syncProfileData(data.user.id);
           setIsSyncing(false);
           return { success: true, isAdmin };
         }
-        
         setIsSyncing(false);
-        return { success: false, error: 'فشل تسجيل الدخول.' };
+        return { success: false, error: 'خطأ غير معروف.' };
       },
       register: async (email, password) => {
         setIsSyncing(true);
-        const { data, error } = await supabase.auth.signUp({ email, password: password || '' });
+        const { data, error: authError } = await supabase.auth.signUp({ email, password: password || '' });
         
-        if (error) {
+        if (authError) {
           setIsSyncing(false);
-          let msg = error.message;
-          if (msg.includes('rate limit')) msg = 'تجاوزت حد إرسال الرسائل. يرجى الانتظار قليلاً أو استخدام بريد مختلف.';
+          let msg = authError.message;
+          if (msg.includes('rate limit')) msg = 'تجاوزت حد إرسال الرسائل. يرجى الانتظار ساعة.';
           return { success: false, error: msg };
         }
 
@@ -167,12 +144,11 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
             id: data.user.id, 
             email: email.toLowerCase(), 
             referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
-            transactions: [], activePackages: [], notifications: [],
-            is_admin: false,
-            role: 'USER'
+            role: 'USER', is_admin: false
           };
           
-          await supabase.from('profiles').insert({ 
+          // محاولة حفظ في جدول البروفايل مع معالجة الأخطاء
+          const { error: dbError } = await supabase.from('profiles').upsert({ 
             id: data.user.id, 
             email: email.toLowerCase(), 
             data: newUser, 
@@ -180,8 +156,30 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
             is_admin: false 
           });
 
-          setUser(newUser);
-          setIsAuthenticated(true);
+          if (dbError) {
+            console.error("[MineCloud] DB Error:", dbError);
+            // محاولة ثانية ببيانات أقل في حال عدم وجود أعمدة مخصصة
+            const { error: retryError } = await supabase.from('profiles').upsert({ 
+              id: data.user.id, 
+              email: email.toLowerCase(), 
+              data: newUser
+            });
+            
+            if (retryError) {
+              setIsSyncing(false);
+              return { success: false, error: "خطأ في قاعدة البيانات: يرجى التأكد من صلاحيات RLS في Supabase." };
+            }
+          }
+
+          // إذا كان البريد يحتاج تأكيد، لن يتم تسجيل الدخول تلقائياً
+          if (data.session) {
+            setUser(newUser);
+            setIsAuthenticated(true);
+          } else {
+            setIsSyncing(false);
+            return { success: true, error: "تم الإنشاء! يرجى مراجعة بريدك الإلكتروني لتفعيل الحساب." };
+          }
+
           setIsSyncing(false);
           return { success: true };
         }
@@ -189,9 +187,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         setIsSyncing(false);
         return { success: false, error: 'فشل إنشاء الحساب.' };
       },
-      logout: async () => { 
-        await supabase.auth.signOut();
-      },
+      logout: () => supabase.auth.signOut(),
       purchaseDevice: async (pkg) => {
         if (user.balance < pkg.price) return false;
         const newPkg: UserPackage = { 
@@ -213,64 +209,50 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       },
       depositFunds: async (amount, method, hash) => {
         const tx: Transaction = { id: `DEP-${Date.now()}`, amount, type: TransactionType.DEPOSIT, status: TransactionStatus.PENDING, date: new Date().toISOString(), currency: 'USDT', txHash: hash };
-        const currentTxs = Array.isArray(user.transactions) ? user.transactions : [];
-        await saveToCloud({ ...user, transactions: [tx, ...currentTxs] });
+        await saveToCloud({ ...user, transactions: [tx, ...(user.transactions || [])] });
       },
       withdrawFunds: async (amount, addr) => {
         if (user.balance < amount) return false;
         const tx: Transaction = { id: `WDR-${Date.now()}`, amount, type: TransactionType.WITHDRAWAL, status: TransactionStatus.PENDING, date: new Date().toISOString(), currency: 'USDT', address: addr };
-        const currentTxs = Array.isArray(user.transactions) ? user.transactions : [];
-        await saveToCloud({ ...user, balance: user.balance - amount, transactions: [tx, ...currentTxs] });
+        await saveToCloud({ ...user, balance: user.balance - amount, transactions: [tx, ...(user.transactions || [])] });
         return true;
       },
       approveTransaction: async (uid, txid) => {
         const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
         if (data) {
           const d = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
-          let found = false;
           d.transactions = (d.transactions || []).map((tx:any) => {
             if (tx.id === txid && tx.status === TransactionStatus.PENDING) {
               if (tx.type === TransactionType.DEPOSIT) d.balance += tx.amount;
-              found = true;
               return { ...tx, status: TransactionStatus.COMPLETED };
             }
             return tx;
           });
-          if (found) {
-            await supabase.from('profiles').update({ data: d }).eq('id', uid);
-            if (user.id === uid) setUser(d);
-          }
+          await supabase.from('profiles').update({ data: d }).eq('id', uid);
+          if (user.id === uid) setUser(d);
         }
       },
       rejectTransaction: async (uid, txid) => {
         const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
         if (data) {
           const d = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
-          let found = false;
           d.transactions = (d.transactions || []).map((tx:any) => {
             if (tx.id === txid && tx.status === TransactionStatus.PENDING) {
               if (tx.type === TransactionType.WITHDRAWAL) d.balance += tx.amount;
-              found = true;
               return { ...tx, status: TransactionStatus.REJECTED };
             }
             return tx;
           });
-          if (found) {
-            await supabase.from('profiles').update({ data: d }).eq('id', uid);
-            if (user.id === uid) setUser(d);
-          }
+          await supabase.from('profiles').update({ data: d }).eq('id', uid);
+          if (user.id === uid) setUser(d);
         }
       },
       updateUserRole: async (uid, role) => {
         const isAdmin = role === 'ADMIN';
         await supabase.from('profiles').update({ role: role.toLowerCase(), is_admin: isAdmin }).eq('id', uid);
-        if (user.id === uid) {
-          setUser(prev => ({ ...prev, role: isAdmin ? 'ADMIN' : 'USER', is_admin: isAdmin }));
-        }
+        if (user.id === uid) setUser(prev => ({ ...prev, role: isAdmin ? 'ADMIN' : 'USER', is_admin: isAdmin }));
       },
-      deleteChatMessage: async (messageId) => {
-        await supabase.from('global_chat').delete().eq('id', messageId);
-      },
+      deleteChatMessage: (id) => supabase.from('global_chat').delete().eq('id', id),
       addNotification: (title, message, type) => {
         const n = { id: `N-${Date.now()}`, title, message, type, date: new Date().toISOString(), isRead: false };
         setLatestNotification(n);
@@ -278,14 +260,11 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         setTimeout(() => setLatestNotification(null), 5000);
       },
       markChatAsRead: () => setUser(p => ({ ...p, lastSeenChatTime: Date.now() })),
-      resetSystem: async () => { 
-        await supabase.auth.signOut();
-        window.location.reload(); 
-      },
+      resetSystem: () => { supabase.auth.signOut(); window.location.reload(); },
       confirmRecoveryKeySaved: () => setUser(p => ({ ...p, hasSavedRecoveryKey: true })),
       autoPilotMode,
       toggleAutoPilot: () => setAutoPilotMode(!autoPilotMode),
-      exportAccount: () => { try { return btoa(JSON.stringify(user)); } catch (e) { return ""; } },
+      exportAccount: () => btoa(JSON.stringify(user)),
       markNotificationsAsRead: () => setUser(p => ({ ...p, notifications: (p.notifications || []).map(n => ({ ...n, isRead: true })) })),
       clearNotifications: () => setUser(p => ({ ...p, notifications: [] }))
     }}>
