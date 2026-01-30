@@ -54,7 +54,7 @@ const AppRoutes = () => {
   const { isAuthenticated, isProfileLoaded, user } = useUser();
   if (!isProfileLoaded) return <SplashScreen />;
 
-  // التحقق السلطوي من رتبة المسؤول
+  // التحقق من صلاحيات المسؤول بشكل دقيق
   const isAdmin = user.is_admin === true || user.role === 'ADMIN';
 
   return (
@@ -62,10 +62,13 @@ const AppRoutes = () => {
       {isAuthenticated && <AIChatBot />}
       <DebugOverlay />
       <Routes>
+        {/* التوجيه الأساسي */}
         <Route path="/" element={isAuthenticated ? (isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />) : <Landing />} />
+        
+        {/* صفحة المصادقة */}
         <Route path="/auth" element={!isAuthenticated ? <AuthView /> : (isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />)} />
         
-        {/* User Routes */}
+        {/* مسارات المستخدم العادي */}
         <Route path="/dashboard" element={isAuthenticated ? <Layout userRole={user.role}><Dashboard /></Layout> : <Navigate to="/auth" replace />} />
         <Route path="/market" element={isAuthenticated ? <Layout userRole={user.role}><Market /></Layout> : <Navigate to="/auth" replace />} />
         <Route path="/my-devices" element={isAuthenticated ? <Layout userRole={user.role}><MyDevices /></Layout> : <Navigate to="/auth" replace />} />
@@ -79,7 +82,7 @@ const AppRoutes = () => {
         <Route path="/about" element={isAuthenticated ? <Layout userRole={user.role}><About /></Layout> : <Navigate to="/auth" replace />} />
         <Route path="/privacy" element={isAuthenticated ? <Layout userRole={user.role}><Privacy /></Layout> : <Navigate to="/auth" replace />} />
         
-        {/* Strictly Protected Admin Route */}
+        {/* مسار المسؤول المحمي */}
         <Route path="/admin" element={isAuthenticated && isAdmin ? <Layout userRole={user.role}><Admin /></Layout> : <Navigate to="/dashboard" replace />} />
         
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -101,15 +104,22 @@ const AuthView = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); 
     setError(null); 
-    if (authMode === 'register' && password !== confirmPassword) { setError("كلمات المرور غير متطابقة."); return; }
+    if (authMode === 'register' && password !== confirmPassword) { 
+      setError("كلمات المرور غير متطابقة."); 
+      return; 
+    }
+    
     setIsLoading(true);
     try {
       const result = authMode === 'register' ? await register(email, password) : await login(email, password);
+      
       if (result.success) {
+        // يتم التوجيه تلقائياً عبر AppRoutes بناءً على الحالة المحدثة
         if (result.isAdmin) navigate('/admin', { replace: true });
         else navigate('/dashboard', { replace: true }); 
+      } else {
+        setError(result.error || 'فشل تسجيل الدخول');
       }
-      else setError(result.error || 'فشل تسجيل الدخول');
     } catch (err: any) { 
       setError(err.message || "خطأ في الاتصال بالسحابة."); 
     } finally { 
@@ -124,20 +134,56 @@ const AuthView = () => {
           <div className="w-20 h-20 bg-blue-600 rounded-[1.5rem] mx-auto flex items-center justify-center overflow-hidden shadow-2xl mb-6">
             <img src={LOGO_URL} alt="MineCloud" className="w-full h-full object-cover" />
           </div>
-          <h2 className="text-3xl font-black text-white mb-2">{authMode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}</h2>
+          <h2 className="text-3xl font-black text-white mb-2">
+            {authMode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}
+          </h2>
         </div>
-        {error && <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl text-rose-400 text-xs font-bold animate-shake text-center">{error}</div>}
+        
+        {error && (
+          <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl text-rose-400 text-xs font-bold animate-shake text-center whitespace-pre-line">
+            {error}
+          </div>
+        )}
+        
         <form className="space-y-4" onSubmit={handleSubmit}>
-          <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
-          <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="كلمة المرور" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
+          <input 
+            required 
+            type="email" 
+            value={email} 
+            onChange={(e) => setEmail(e.target.value)} 
+            placeholder="البريد الإلكتروني" 
+            className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" 
+          />
+          <input 
+            required 
+            type="password" 
+            value={password} 
+            onChange={(e) => setPassword(e.target.value)} 
+            placeholder="كلمة المرور" 
+            className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" 
+          />
           {authMode === 'register' && (
-             <input required type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="تأكيد كلمة المرور" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
+             <input 
+              required 
+              type="password" 
+              value={confirmPassword} 
+              onChange={(e) => setConfirmPassword(e.target.value)} 
+              placeholder="تأكيد كلمة المرور" 
+              className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" 
+             />
           )}
-          <button disabled={isLoading} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-600/20 active:scale-95 flex items-center justify-center">
+          <button 
+            disabled={isLoading} 
+            className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-600/20 active:scale-95 flex items-center justify-center"
+          >
             {isLoading ? <Loader2 className="animate-spin" /> : (authMode === 'login' ? 'دخول آمن' : 'إنشاء الحساب الآن')}
           </button>
         </form>
-        <button onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setError(null); }} className="w-full text-slate-400 text-sm font-bold hover:text-blue-400 transition-colors">
+        
+        <button 
+          onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setError(null); }} 
+          className="w-full text-slate-400 text-sm font-bold hover:text-blue-400 transition-colors"
+        >
           {authMode === 'login' ? 'ليس لديك حساب؟ افتح حساباً مجانياً' : 'لديك حساب بالفعل؟ سجل دخولك'}
         </button>
       </div>
@@ -145,5 +191,12 @@ const AuthView = () => {
   );
 };
 
-const App = () => (<UserProvider><LanguageProvider><AppRoutes /></LanguageProvider></UserProvider>);
+const App = () => (
+  <UserProvider>
+    <LanguageProvider>
+      <AppRoutes />
+    </LanguageProvider>
+  </UserProvider>
+);
+
 export default App;

@@ -43,55 +43,51 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
   const [autoPilotMode, setAutoPilotMode] = useState(false);
   const [latestNotification, setLatestNotification] = useState<AppNotification | null>(null);
 
-  // جلب البيانات من جدول Profiles بناءً على معرف المستخدم الصادر من Auth
+  // وظيفة المزامنة الأساسية: تجلب البيانات من الجدول وتحدث الحالة
   const syncProfileData = async (authId: string) => {
     try {
-      console.log(`[MineCloud] Querying public.profiles for ID: ${authId}`);
+      console.log(`[MineCloud] Syncing profile for ID: ${authId}`);
       
       const { data, error } = await supabase
         .from('profiles')
         .select('id, email, role, is_admin, data')
         .eq('id', authId)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        console.error("[MineCloud] Profile fetch error:", error);
+        console.error("[MineCloud] Error fetching profile from DB:", error.message);
         return false;
       }
 
       if (data) {
-        console.log("[MineCloud] RAW DB DATA:", data);
+        let userDataFromJSON = typeof data.data === 'string' ? JSON.parse(data.data) : (data.data || {});
         
-        let userDataFromJSON = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
-        
-        // التحقق السلطوي (Authoritative Check) من الأعمدة مباشرة
-        // نتحقق من is_admin كقيمة منطقية، و role كنص
-        const isAdminAuthoritative = 
-          data.is_admin === true || 
-          data.role?.toLowerCase() === 'admin';
+        // التحقق من الأعمدة مباشرة (Authoritative Check)
+        const isAdmin = data.is_admin === true || (data.role && data.role.toLowerCase() === 'admin');
         
         const freshUser: User = {
+          ...INITIAL_USER,
           ...userDataFromJSON,
           id: authId,
           email: data.email || userDataFromJSON.email,
-          role: isAdminAuthoritative ? 'ADMIN' : 'USER',
-          is_admin: isAdminAuthoritative
+          role: isAdmin ? 'ADMIN' : 'USER',
+          is_admin: isAdmin
         };
 
-        console.log("%c [MineCloud] Admin Detection Result ", "background: #1e293b; color: #fbbf24; font-weight: bold; padding: 2px 5px;", {
-          id: freshUser.id,
+        console.log("%c [MineCloud] Profile Synced ✅", "color: #10b981; font-weight: bold;", {
+          email: freshUser.email,
           role: freshUser.role,
-          is_admin: freshUser.is_admin,
-          db_role_col: data.role,
-          db_is_admin_col: data.is_admin
+          is_admin: freshUser.is_admin
         });
 
         setUser(freshUser);
         setIsAuthenticated(true);
-        return isAdminAuthoritative;
+        return isAdmin;
+      } else {
+        console.warn("[MineCloud] No profile record found for this ID in 'profiles' table.");
       }
     } catch (e) {
-      console.error("[MineCloud] Critical profile sync exception:", e);
+      console.error("[MineCloud] Sync exception:", e);
     }
     return false;
   };
@@ -110,24 +106,20 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
   };
 
   useEffect(() => {
-    const initSession = async () => {
-      // 1. استخدام getUser() بدلاً من getSession() لضمان التحقق من صحة التوكن من السيرفر
-      const { data: { user: authUser }, error } = await supabase.auth.getUser();
-      
-      if (authUser && !error) {
-        console.log("[MineCloud] Session validated for:", authUser.email);
+    const initAuth = async () => {
+      // التحقق من الجلسة الحالية
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
         await syncProfileData(authUser.id);
-      } else {
-        console.log("[MineCloud] No active session found or session invalid.");
       }
       setIsProfileLoaded(true);
     };
 
-    initSession();
+    initAuth();
 
-    // 2. مستمع حالة المصادقة لضمان المزامنة الفورية عند الدخول/الخروج
+    // مستمع لتغيرات حالة الدخول
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`[MineCloud] Auth State Changed: ${event}`);
+      console.log(`[MineCloud] Auth Event: ${event}`);
       if (session?.user) {
         await syncProfileData(session.user.id);
       } else if (event === 'SIGNED_OUT') {
@@ -146,42 +138,59 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
       login: async (email, password) => {
         setIsSyncing(true);
         const { data, error } = await supabase.auth.signInWithPassword({ email, password: password || '' });
-        if (error || !data.user) {
+        
+        if (error) {
           setIsSyncing(false);
-          return { success: false, error: 'بيانات الدخول غير صحيحة' };
+          let msg = 'بيانات الدخول غير صحيحة';
+          if (error.message.includes('rate limit')) msg = 'تجاوزت حد المحاولات المسموح به. يرجى الانتظار قليلاً.';
+          return { success: false, error: msg };
         }
-        const isAdmin = await syncProfileData(data.user.id);
+
+        if (data.user) {
+          const isAdmin = await syncProfileData(data.user.id);
+          setIsSyncing(false);
+          return { success: true, isAdmin };
+        }
+        
         setIsSyncing(false);
-        return { success: true, isAdmin };
+        return { success: false, error: 'فشل غير متوقع' };
       },
       register: async (email, password) => {
         setIsSyncing(true);
         const { data, error } = await supabase.auth.signUp({ email, password: password || '' });
-        if (error || !data.user) {
+        
+        if (error) {
           setIsSyncing(false);
-          return { success: false, error: error?.message || 'فشل عملية التسجيل' };
+          let msg = error.message;
+          if (error.message.includes('rate limit')) msg = 'تجاوزت حد إرسال الإيميلات (Rate Limit). يرجى المحاولة بعد ساعة.';
+          return { success: false, error: msg };
         }
-        
-        const newUser: User = { 
-          ...INITIAL_USER, 
-          id: data.user.id, 
-          email: email.toLowerCase(), 
-          referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
-          transactions: [], activePackages: [], notifications: []
-        };
-        
-        await supabase.from('profiles').insert({ 
-          id: data.user.id, 
-          email: email.toLowerCase(), 
-          data: newUser, 
-          role: 'user', 
-          is_admin: false 
-        });
 
-        setUser(newUser);
-        setIsAuthenticated(true);
+        if (data.user) {
+          const newUser: User = { 
+            ...INITIAL_USER, 
+            id: data.user.id, 
+            email: email.toLowerCase(), 
+            referralCode: 'MC-'+Math.floor(1000+Math.random()*9000),
+            transactions: [], activePackages: [], notifications: []
+          };
+          
+          await supabase.from('profiles').insert({ 
+            id: data.user.id, 
+            email: email.toLowerCase(), 
+            data: newUser, 
+            role: 'user', 
+            is_admin: false 
+          });
+
+          setUser(newUser);
+          setIsAuthenticated(true);
+          setIsSyncing(false);
+          return { success: true };
+        }
+
         setIsSyncing(false);
-        return { success: true };
+        return { success: false, error: 'فشل إنشاء الحساب' };
       },
       logout: async () => { 
         await supabase.auth.signOut();
@@ -262,8 +271,8 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           setUser(prev => ({ ...prev, role: isAdmin ? 'ADMIN' : 'USER', is_admin: isAdmin }));
         }
       },
-      deleteChatMessage: async (mid) => {
-        await supabase.from('global_chat').delete().eq('id', mid);
+      deleteChatMessage: async (messageId) => {
+        await supabase.from('global_chat').delete().eq('id', messageId);
       },
       addNotification: (title, message, type) => {
         const n = { id: `N-${Date.now()}`, title, message, type, date: new Date().toISOString(), isRead: false };
