@@ -43,42 +43,55 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
   const [autoPilotMode, setAutoPilotMode] = useState(false);
   const [latestNotification, setLatestNotification] = useState<AppNotification | null>(null);
 
-  // الوظيفة الأساسية لجلب البيانات من جدول Profiles بناءً على ID المستخدم
+  // جلب البيانات من جدول Profiles بناءً على معرف المستخدم الصادر من Auth
   const syncProfileData = async (authId: string) => {
     try {
+      console.log(`[MineCloud] Querying public.profiles for ID: ${authId}`);
+      
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, email, role, is_admin, data')
         .eq('id', authId)
-        .maybeSingle();
+        .single();
 
-      if (data && !error) {
-        let userData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+      if (error) {
+        console.error("[MineCloud] Profile fetch error:", error);
+        return false;
+      }
+
+      if (data) {
+        console.log("[MineCloud] RAW DB DATA:", data);
         
-        // التحقق الصارم من الأعمدة (Authoritative Check)
-        const isAdmin = data.is_admin === true || data.role?.toLowerCase() === 'admin';
+        let userDataFromJSON = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+        
+        // التحقق السلطوي (Authoritative Check) من الأعمدة مباشرة
+        // نتحقق من is_admin كقيمة منطقية، و role كنص
+        const isAdminAuthoritative = 
+          data.is_admin === true || 
+          data.role?.toLowerCase() === 'admin';
         
         const freshUser: User = {
-          ...userData,
+          ...userDataFromJSON,
           id: authId,
-          email: data.email || userData.email,
-          role: isAdmin ? 'ADMIN' : 'USER',
-          is_admin: isAdmin
+          email: data.email || userDataFromJSON.email,
+          role: isAdminAuthoritative ? 'ADMIN' : 'USER',
+          is_admin: isAdminAuthoritative
         };
 
-        console.log("%c [MineCloud] Profile Refetched ", "background: #1e293b; color: #38bdf8; padding: 2px 5px; border-radius: 4px;", {
-          id: authId,
-          email: freshUser.email,
+        console.log("%c [MineCloud] Admin Detection Result ", "background: #1e293b; color: #fbbf24; font-weight: bold; padding: 2px 5px;", {
+          id: freshUser.id,
           role: freshUser.role,
-          is_admin: freshUser.is_admin
+          is_admin: freshUser.is_admin,
+          db_role_col: data.role,
+          db_is_admin_col: data.is_admin
         });
 
         setUser(freshUser);
         setIsAuthenticated(true);
-        return isAdmin;
+        return isAdminAuthoritative;
       }
     } catch (e) {
-      console.error("[MineCloud] Critical profile sync error:", e);
+      console.error("[MineCloud] Critical profile sync exception:", e);
     }
     return false;
   };
@@ -98,20 +111,23 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     const initSession = async () => {
-      // 1. استعادة الجلسة عند بدء تشغيل التطبيق
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        console.log("[MineCloud] Session found, syncing profile...");
-        await syncProfileData(session.user.id);
+      // 1. استخدام getUser() بدلاً من getSession() لضمان التحقق من صحة التوكن من السيرفر
+      const { data: { user: authUser }, error } = await supabase.auth.getUser();
+      
+      if (authUser && !error) {
+        console.log("[MineCloud] Session validated for:", authUser.email);
+        await syncProfileData(authUser.id);
+      } else {
+        console.log("[MineCloud] No active session found or session invalid.");
       }
       setIsProfileLoaded(true);
     };
 
     initSession();
 
-    // 2. مستمع لتغييرات حالة المصادقة (دخول، خروج، تجديد التوكن)
+    // 2. مستمع حالة المصادقة لضمان المزامنة الفورية عند الدخول/الخروج
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`[MineCloud] Auth Event: ${event}`);
+      console.log(`[MineCloud] Auth State Changed: ${event}`);
       if (session?.user) {
         await syncProfileData(session.user.id);
       } else if (event === 'SIGNED_OUT') {

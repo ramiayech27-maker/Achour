@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
 import { 
   ShieldCheck, RefreshCw, Users, DollarSign, Clock, AlertTriangle, CheckCircle2, 
   Activity, Server, UserCheck, MessageSquare, Trash2, ShieldAlert, ChevronRight, UserMinus, UserPlus, Search, 
@@ -9,68 +8,66 @@ import {
 } from 'lucide-react';
 import { useUser } from '../UserContext';
 import { TransactionType, TransactionStatus, User as AppUser } from '../types';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../supabaseConfig';
-
-const supabase = (SUPABASE_URL.startsWith('http') && !SUPABASE_URL.includes("your-project-id")) ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
-
-interface ChatMessage {
-  id: string;
-  sender_email: string;
-  sender_role: string;
-  message_text: string;
-  created_at: string;
-}
+import { supabase } from '../supabaseConfig';
 
 const Admin = () => {
   const navigate = useNavigate();
   const { user: currentAdmin, approveTransaction, rejectTransaction, updateUserRole, deleteChatMessage } = useUser();
   const [activeTab, setActiveTab] = useState<'users' | 'transactions' | 'chat'>('users');
   const [registeredUsers, setRegisteredUsers] = useState<AppUser[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [userFilter, setUserFilter] = useState<'ALL' | 'ADMIN' | 'USER'>('ALL');
 
   const loadAllData = async () => {
-    if (!supabase) return;
     setIsRefreshing(true);
     try {
-      // 1. Fetch Profiles
-      const { data: profileData } = await supabase.from('profiles').select('*');
+      // 1. جلب كافة البروفايلات
+      const { data: profileData, error: profileErr } = await supabase.from('profiles').select('*');
+      if (profileErr) throw profileErr;
+      
       if (profileData) {
         const users = profileData.map(row => {
           let userData = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
-          // Set authoritative role based on row column
           const isAdmin = row.is_admin === true || row.role?.toLowerCase() === 'admin';
-          userData.role = isAdmin ? 'ADMIN' : 'USER';
-          userData.is_admin = isAdmin;
-          return userData;
+          return {
+            ...userData,
+            id: row.id,
+            email: row.email,
+            role: isAdmin ? 'ADMIN' : 'USER',
+            is_admin: isAdmin
+          };
         }).filter(u => u && u.id);
         setRegisteredUsers(users);
       }
 
-      // 2. Fetch Chat
-      const { data: chatData } = await supabase.from('global_chat').select('*').order('created_at', { ascending: false }).limit(100);
+      // 2. جلب رسائل الدردشة
+      const { data: chatData, error: chatErr } = await supabase.from('global_chat').select('*').order('created_at', { ascending: false }).limit(100);
+      if (chatErr) throw chatErr;
       if (chatData) setMessages(chatData);
 
     } catch (e: any) {
-      console.error("Admin Load Error:", e);
+      console.error("[MineCloud] Admin Data Fetch Failure:", e);
     } finally {
       setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
-    if (currentAdmin.role !== 'ADMIN') {
+    // التحقق من الصلاحيات من الـ Context
+    const isAdmin = currentAdmin.is_admin === true || currentAdmin.role === 'ADMIN';
+    if (!isAdmin) {
+      console.warn("[MineCloud] Unauthorized admin access attempt by:", currentAdmin.email);
       navigate('/dashboard');
       return;
     }
     loadAllData();
-  }, [currentAdmin.role, navigate]);
+  }, [currentAdmin.role, currentAdmin.is_admin, navigate]);
 
   const filteredUsers = useMemo(() => {
     return registeredUsers.filter(u => {
-      const matchesSearch = u.email.toLowerCase().includes(searchQuery.toLowerCase()) || u.id.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = u.email?.toLowerCase().includes(searchQuery.toLowerCase()) || u.id?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesFilter = userFilter === 'ALL' || u.role === userFilter;
       return matchesSearch && matchesFilter;
     });
@@ -108,8 +105,6 @@ const Admin = () => {
     setIsRefreshing(false);
   };
 
-  if (currentAdmin.role !== 'ADMIN') return null;
-
   return (
     <div className="space-y-8 animate-in fade-in duration-500 font-cairo pb-20 text-right" dir="rtl">
       
@@ -121,7 +116,7 @@ const Admin = () => {
            </div>
            <div>
               <h1 className="text-4xl font-black text-white">لوحة تحكم المسؤول</h1>
-              <p className="text-slate-500 font-bold">إدارة البنية التحتية، المستخدمين، والعمليات المالية.</p>
+              <p className="text-slate-500 font-bold">إدارة البنية التحتية والمستخدمين.</p>
            </div>
         </div>
         <div className="flex items-center gap-4">
@@ -198,8 +193,8 @@ const Admin = () => {
                       <div>
                          <p className="text-white font-black text-lg">{u.email}</p>
                          <div className="flex items-center gap-4 mt-1">
-                           <span className="text-[10px] text-emerald-400 font-black tracking-widest uppercase">الرصيد: ${u.balance.toFixed(2)}</span>
-                           <span className="text-[10px] text-slate-500 font-black tracking-widest uppercase">العمليات: {u.transactions?.length || 0}</span>
+                           <span className="text-[10px] text-emerald-400 font-black tracking-widest uppercase">الرصيد: ${u.balance?.toFixed(2) || '0.00'}</span>
+                           <span className="text-[10px] text-slate-500 font-black tracking-widest uppercase">ID: {u.id?.slice(0,8)}...</span>
                          </div>
                       </div>
                    </div>
@@ -283,7 +278,7 @@ const Admin = () => {
                 <div key={m.id} className="p-8 hover:bg-white/[0.02] flex items-start justify-between group transition-colors">
                    <div className="flex gap-5">
                       <div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center text-slate-500 font-black shadow-inner border border-white/5">
-                         {m.sender_email.charAt(0).toUpperCase()}
+                         {m.sender_email?.charAt(0).toUpperCase()}
                       </div>
                       <div>
                          <div className="flex items-center gap-3 mb-2">

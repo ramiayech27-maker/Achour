@@ -40,12 +40,12 @@ const SplashScreen = () => (
 );
 
 const DebugOverlay = () => {
-  const { user, isAuthenticated } = useUser();
-  if (!isAuthenticated) return null;
+  const { user, isAuthenticated, isProfileLoaded } = useUser();
+  if (!isAuthenticated || !isProfileLoaded) return null;
   return (
-    <div className="fixed bottom-4 left-4 z-[9999] glass p-3 rounded-xl border border-blue-500/30 text-[10px] font-mono text-blue-400 flex items-center gap-2 pointer-events-none">
+    <div className="fixed bottom-4 left-4 z-[9999] glass p-3 rounded-xl border border-blue-500/30 text-[10px] font-mono text-blue-400 flex items-center gap-2 pointer-events-none select-none">
       <Bug size={14} />
-      <span>Role: {user.role} | is_admin: {String(user.is_admin)}</span>
+      <span>Role: {user.role} | is_admin: {String(user.is_admin)} | ID: {user.id?.slice(0,5)}</span>
     </div>
   );
 };
@@ -55,7 +55,7 @@ const AppRoutes = () => {
   if (!isProfileLoaded) return <SplashScreen />;
 
   // التحقق السلطوي من رتبة المسؤول
-  const isAdmin = user.is_admin === true || user.role?.toLowerCase() === 'admin';
+  const isAdmin = user.is_admin === true || user.role === 'ADMIN';
 
   return (
     <>
