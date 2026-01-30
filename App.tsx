@@ -19,7 +19,7 @@ import Privacy from './views/Privacy';
 import AIChatBot from './components/AIChatBot';
 import { UserProvider, useUser } from './UserContext';
 import { LanguageProvider } from './LanguageContext';
-import { Loader2, Bug } from 'lucide-react';
+import { Loader2, Bug, Eye, EyeOff } from 'lucide-react';
 
 const LOGO_URL = "https://c.top4top.io/p_3676pdlj43.jpg";
 
@@ -95,6 +95,8 @@ const AuthView = () => {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { login, register } = useUser();
 
@@ -108,13 +110,16 @@ const AuthView = () => {
       if (result.success) {
         // سيتم التوجيه تلقائياً عبر AppRoutes
       }
-      else setError(result.error || 'فشل تسجيل الدخول');
+      else setError(result.error || 'فشل العملية');
     } catch (err: any) { 
       setError(err.message || "خطأ في الاتصال بالسحابة."); 
     } finally { 
       setIsLoading(false); 
     }
   };
+
+  const togglePasswordVisibility = () => setShowPassword(!showPassword);
+  const toggleConfirmPasswordVisibility = () => setShowConfirmPassword(!showConfirmPassword);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-slate-950 font-cairo text-right">
@@ -125,18 +130,58 @@ const AuthView = () => {
           </div>
           <h2 className="text-3xl font-black text-white mb-2">{authMode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}</h2>
         </div>
+        
         {error && <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl text-rose-400 text-xs font-bold animate-shake text-center">{error}</div>}
+        
         <form className="space-y-4" onSubmit={handleSubmit}>
-          <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
-          <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="كلمة المرور" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
+          <div className="space-y-2">
+            <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
+          </div>
+          
+          <div className="relative">
+            <input 
+              required 
+              type={showPassword ? "text" : "password"} 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              placeholder="كلمة المرور" 
+              className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right pr-4 pl-12" 
+            />
+            <button 
+              type="button"
+              onClick={togglePasswordVisibility}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
+
           {authMode === 'register' && (
-             <input required type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="تأكيد كلمة المرور" className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right" />
+             <div className="relative">
+                <input 
+                  required 
+                  type={showConfirmPassword ? "text" : "password"} 
+                  value={confirmPassword} 
+                  onChange={(e) => setConfirmPassword(e.target.value)} 
+                  placeholder="تأكيد كلمة المرور" 
+                  className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white outline-none focus:border-blue-500 text-right pr-4 pl-12" 
+                />
+                <button 
+                  type="button"
+                  onClick={toggleConfirmPasswordVisibility}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                >
+                  {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+             </div>
           )}
-          <button disabled={isLoading} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-600/20 active:scale-95 flex items-center justify-center">
+          
+          <button disabled={isLoading} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-600/20 active:scale-95 flex items-center justify-center transition-all">
             {isLoading ? <Loader2 className="animate-spin" /> : (authMode === 'login' ? 'دخول آمن' : 'إنشاء الحساب الآن')}
           </button>
         </form>
-        <button onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setError(null); }} className="w-full text-slate-400 text-sm font-bold hover:text-blue-400 transition-colors">
+        
+        <button onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setError(null); setShowPassword(false); setShowConfirmPassword(false); }} className="w-full text-slate-400 text-sm font-bold hover:text-blue-400 transition-colors">
           {authMode === 'login' ? 'ليس لديك حساب؟ افتح حساباً مجانياً' : 'لديك حساب بالفعل؟ سجل دخولك'}
         </button>
       </div>

@@ -47,14 +47,9 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, email, role, is_admin, data')
+        .select('*')
         .eq('id', authId)
         .maybeSingle();
-
-      if (error) {
-        console.error("[MineCloud] Sync Error:", error.message);
-        return false;
-      }
 
       if (data) {
         let userDataFromJSON = typeof data.data === 'string' ? JSON.parse(data.data) : (data.data || {});
@@ -74,7 +69,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         return isAdmin;
       }
     } catch (e) {
-      console.error("[MineCloud] Sync Exception:", e);
+      console.error("[MineCloud] Sync Failure:", e);
     }
     return false;
   };
@@ -84,7 +79,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
     if (updatedUser.id) {
       try {
         await supabase.from('profiles').update({ data: updatedUser }).eq('id', updatedUser.id);
-      } catch (e) { console.error("[MineCloud] Update Error:", e); }
+      } catch (e) { console.error("[MineCloud] Cloud Save Error:", e); }
     }
   };
 
@@ -114,10 +109,7 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
         const { data, error } = await supabase.auth.signInWithPassword({ email, password: password || '' });
         if (error) {
           setIsSyncing(false);
-          let msg = error.message;
-          if (msg.includes('rate limit')) msg = 'تم تجاوز حد الطلبات. حاول بعد قليل.';
-          if (msg.includes('Email not confirmed')) msg = 'يرجى تأكيد حسابك من خلال الرابط المرسل لبريدك الإلكتروني.';
-          return { success: false, error: msg };
+          return { success: false, error: error.message };
         }
         if (data.user) {
           const isAdmin = await syncProfileData(data.user.id);
@@ -125,17 +117,16 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
           return { success: true, isAdmin };
         }
         setIsSyncing(false);
-        return { success: false, error: 'خطأ غير معروف.' };
+        return { success: false, error: 'Login failed' };
       },
       register: async (email, password) => {
         setIsSyncing(true);
+        // 1. إنشاء الحساب في نظام الهوية
         const { data, error: authError } = await supabase.auth.signUp({ email, password: password || '' });
         
         if (authError) {
           setIsSyncing(false);
-          let msg = authError.message;
-          if (msg.includes('rate limit')) msg = 'تجاوزت حد إرسال الرسائل. يرجى الانتظار ساعة.';
-          return { success: false, error: msg };
+          return { success: false, error: authError.message };
         }
 
         if (data.user) {
@@ -147,41 +138,25 @@ export const UserProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
             role: 'USER', is_admin: false
           };
           
-          // محاولة حفظ في جدول البروفايل مع معالجة الأخطاء
-          const { error: dbError } = await supabase.from('profiles').upsert({ 
-            id: data.user.id, 
-            email: email.toLowerCase(), 
-            data: newUser, 
-            role: 'user', 
-            is_admin: false 
-          });
+          // 2. محاولة الحفظ في جدول البروفايل (معالجة RLS)
+          const { error: dbError } = await supabase.from('profiles').insert([
+            { id: data.user.id, email: email.toLowerCase(), data: newUser, role: 'user', is_admin: false }
+          ]);
 
           if (dbError) {
-            console.error("[MineCloud] DB Error:", dbError);
-            // محاولة ثانية ببيانات أقل في حال عدم وجود أعمدة مخصصة
-            const { error: retryError } = await supabase.from('profiles').upsert({ 
-              id: data.user.id, 
-              email: email.toLowerCase(), 
-              data: newUser
-            });
-            
-            if (retryError) {
-              setIsSyncing(false);
-              return { success: false, error: "خطأ في قاعدة البيانات: يرجى التأكد من صلاحيات RLS في Supabase." };
-            }
+             console.warn("[MineCloud] Database insertion error, but account created. Error:", dbError.message);
+             // لا نوقف العملية هنا، ربما تنجح المزامنة لاحقاً عند تسجيل الدخول
           }
 
-          // إذا كان البريد يحتاج تأكيد، لن يتم تسجيل الدخول تلقائياً
           if (data.session) {
             setUser(newUser);
             setIsAuthenticated(true);
+            setIsSyncing(false);
+            return { success: true };
           } else {
             setIsSyncing(false);
-            return { success: true, error: "تم الإنشاء! يرجى مراجعة بريدك الإلكتروني لتفعيل الحساب." };
+            return { success: true, error: "تم إنشاء الحساب! يرجى تفعيل بريدك الإلكتروني إذا طُلب منك." };
           }
-
-          setIsSyncing(false);
-          return { success: true };
         }
 
         setIsSyncing(false);
